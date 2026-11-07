@@ -5,17 +5,21 @@ import '../state/session.dart';
 import '../theme/app_theme.dart';
 import '../theme/pixels.dart';
 import '../theme/tokens.dart';
+import '../widgets/app_dialog.dart';
 import '../widgets/common.dart';
+import '../widgets/fade_menu.dart';
 import '../widgets/fade_through.dart';
 import '../widgets/glide_pill.dart';
 import '../widgets/hover_fill.dart';
 import '../widgets/rolling_number.dart';
 import '../widgets/smooth_gradient.dart';
+import '../widgets/sync_section.dart';
 import 'path_page.dart';
 import 'progress_page.dart';
 import 'read_page.dart';
 import 'session_screen.dart';
 import 'today_page.dart';
+import 'warm_up.dart';
 import 'words_page.dart';
 
 enum Section { today, path, read, words, progress }
@@ -50,29 +54,36 @@ class _ShellState extends State<Shell> {
     return Scaffold(
       backgroundColor: p.background,
       body: SafeArea(
-        child: FadeThrough(
-          child: session != null
-              ? SessionScreen(key: ValueKey('session$_run'), session: session, onClose: _close, onAgain: _start)
-              : PixelColumn(
-                  key: const ValueKey('pages'),
-                  children: [
-                    _Header(tab: _tab, onTab: (t) => setState(() => _tab = t)),
-                    Expanded(
-                      child: FadeThrough(
-                        child: KeyedSubtree(
-                          key: ValueKey(_tab),
-                          child: switch (_tab) {
-                            Section.today => TodayPage(onStart: _start, onTab: (t) => setState(() => _tab = t)),
-                            Section.path => PathPage(onStart: _start),
-                            Section.read => const ReadPage(),
-                            Section.words => const WordsPage(),
-                            Section.progress => const ProgressPage(),
-                          },
-                        ),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: FadeThrough(
+                child: session != null
+                    ? SessionScreen(key: ValueKey('session$_run'), session: session, onClose: _close, onAgain: _start)
+                    : PixelColumn(
+                        key: const ValueKey('pages'),
+                        children: [
+                          _Header(tab: _tab, onTab: (t) => setState(() => _tab = t)),
+                          Expanded(
+                            child: FadeThrough(
+                              child: KeyedSubtree(
+                                key: ValueKey(_tab),
+                                child: switch (_tab) {
+                                  Section.today => TodayPage(onStart: _start, onTab: (t) => setState(() => _tab = t)),
+                                  Section.path => PathPage(onStart: _start),
+                                  Section.read => const ReadPage(),
+                                  Section.words => const WordsPage(),
+                                  Section.progress => const ProgressPage(),
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ],
-                ),
+              ),
+            ),
+            if (WarmUp.enabled) const Positioned.fill(child: WarmUp()),
+          ],
         ),
       ),
     );
@@ -112,19 +123,15 @@ class _Header extends StatelessWidget {
           children: [
             Text(kicker, style: bodyStyle(p.inkMuted, size: 14, weight: FontWeight.w500, height: 1.2)),
             const SizedBox(height: 2),
-            Text(title, style: TextStyle(fontFamily: Fonts.display, fontSize: 38, fontWeight: FontWeight.w600, letterSpacing: -0.6, height: 1.05, color: p.ink)),
+            Text(
+              title,
+              style: TextStyle(fontFamily: Fonts.display, fontSize: 38, fontWeight: FontWeight.w600, letterSpacing: -0.6, height: 1.05, color: p.ink),
+            ),
           ],
         ),
       ),
     );
-    final right = PixelRow(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const _StreakPill(),
-        const SizedBox(width: 12),
-        const _ThemeButton(),
-      ],
-    );
+    final right = PixelRow(mainAxisSize: MainAxisSize.min, children: [const _StreakPill(), const SizedBox(width: 12), const _SettingsButton(), const SizedBox(width: 8), const _ThemeButton()]);
     return Padding(
       padding: const EdgeInsets.fromLTRB(32, 20, 32, 12),
       child: narrow
@@ -132,7 +139,12 @@ class _Header extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                PixelRow(children: [Expanded(child: titleBlock), right]),
+                PixelRow(
+                  children: [
+                    Expanded(child: titleBlock),
+                    right,
+                  ],
+                ),
                 const SizedBox(height: 12),
                 SingleChildScrollView(scrollDirection: Axis.horizontal, child: tabs),
               ],
@@ -167,7 +179,11 @@ class _TabBarState extends State<_TabBar> {
     final p = context.palette;
     return Container(
       padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(color: p.tile.withValues(alpha: 0.8), borderRadius: BorderRadius.circular(24), border: Border.all(color: p.border)),
+      decoration: BoxDecoration(
+        color: p.tile.withValues(alpha: 0.8),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: p.border),
+      ),
       child: GlidePill(
         target: _keys[widget.tab],
         color: p.done,
@@ -178,12 +194,18 @@ class _TabBarState extends State<_TabBar> {
               Hoverable(
                 key: ValueKey(t),
                 onTap: () => widget.onTab(t),
-                builder: (hover) => Container(
+                // The selected background is the bar's gliding pill; a tab only
+                // draws its hover shade, and its text eases as the pill arrives.
+                builder: (hover) => AnimatedContainer(
                   key: _keys[t],
+                  duration: context.themed(Motion.hover),
+                  curve: Motion.hoverCurve,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(borderRadius: BorderRadius.circular(30), color: t != widget.tab && hover ? p.empty : p.empty.withValues(alpha: 0)),
                   child: AnimatedDefaultTextStyle(
-                    duration: context.themed(Motion.click),
-                    style: bodyStyle(t == widget.tab ? p.onDone : (hover ? p.ink : p.inkMuted), weight: FontWeight.w600, height: 1.2),
+                    duration: context.themed(Motion.morph),
+                    curve: Motion.morphCurve,
+                    style: bodyStyle(t == widget.tab ? p.onDone : p.ink, weight: FontWeight.w600, height: 1.2),
                     child: Text(widget.names[t]!),
                   ),
                 ),
@@ -213,7 +235,11 @@ class _StreakPill extends StatelessWidget {
         curve: Motion.morphCurve,
         height: 46,
         padding: const EdgeInsets.symmetric(horizontal: 16),
-        decoration: BoxDecoration(color: done ? p.done : p.tile.withValues(alpha: 0.8), borderRadius: BorderRadius.circular(24), border: Border.all(color: done ? Colors.transparent : p.border)),
+        decoration: BoxDecoration(
+          color: done ? p.done : p.tile.withValues(alpha: 0.8),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: done ? p.border.withValues(alpha: 0) : p.border),
+        ),
         child: PixelRow(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -227,6 +253,38 @@ class _StreakPill extends StatelessWidget {
   }
 }
 
+class _SettingsButton extends StatelessWidget {
+  const _SettingsButton();
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return PixelTooltip(
+      message: 'Settings and sync',
+      child: Material(
+        color: p.tile.withValues(alpha: 0),
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          mouseCursor: SystemMouseCursors.click,
+          onTap: () => showAppDialog(context: context, builder: (_) => const SettingsDialog()),
+          child: Container(
+            width: 46,
+            height: 46,
+            decoration: SmoothGradientDecoration(
+              color: p.tile.withValues(alpha: 0.8),
+              shape: BoxShape.circle,
+              border: Border.all(color: p.border),
+            ),
+            child: Icon(Icons.settings_rounded, size: 22, color: p.inkMuted),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Round swatch of the current theme; opens a menu of all themes.
 class _ThemeButton extends StatelessWidget {
   const _ThemeButton();
 
@@ -236,11 +294,71 @@ class _ThemeButton extends StatelessWidget {
     return PixelTooltip(
       message: 'Appearance',
       child: Hoverable(
-        onTap: () => showDialog(context: context, builder: (_) => const _AppearanceDialog()),
+        onTap: () {
+          // The room below the button, so every theme stays in reach of a short window.
+          final box = context.findRenderObject()! as RenderBox;
+          final below = MediaQuery.sizeOf(context).height - box.localToGlobal(Offset(0, box.size.height)).dy;
+          showFadeMenu(context, builder: (_) => _AppearanceMenu(maxHeight: below - 44));
+        },
         builder: (_) => Container(
           padding: const EdgeInsets.all(4),
-          decoration: SmoothGradientDecoration(color: p.tile.withValues(alpha: 0.8), shape: BoxShape.circle, border: Border.all(color: p.border)),
+          decoration: SmoothGradientDecoration(
+            color: p.tile.withValues(alpha: 0.8),
+            shape: BoxShape.circle,
+            border: Border.all(color: p.border),
+          ),
           child: _Swatch(palette: p, size: 36),
+        ),
+      ),
+    );
+  }
+}
+
+/// The appearance menu's contents. Picking a theme closes it.
+class _AppearanceMenu extends StatelessWidget {
+  const _AppearanceMenu({required this.maxHeight});
+  final double maxHeight;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final state = AppScope.of(context);
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: maxHeight),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final option in palettes)
+              FadeMenuRow(
+                height: 50,
+                onTap: () {
+                  state.setTheme(option.name);
+                  Navigator.pop(context);
+                },
+                child: Row(
+                  children: [
+                    _Swatch(palette: option, size: 28),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Text(
+                        option.name,
+                        style: TextStyle(fontFamily: Fonts.ui, fontSize: 15, fontWeight: option.name == state.themeName ? FontWeight.w600 : FontWeight.w500, color: p.ink),
+                      ),
+                    ),
+                    for (final c in [option.done, option.missed, option.other, option.today])
+                      Container(
+                        width: 8,
+                        height: 8,
+                        margin: const EdgeInsets.only(left: 4),
+                        decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(4)),
+                      ),
+                    SizedBox(width: 32, child: option.name == state.themeName ? Icon(Icons.check_rounded, size: 18, color: p.accent) : null),
+                  ],
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -264,8 +382,8 @@ class _Swatch extends StatelessWidget {
   );
 }
 
-class _AppearanceDialog extends StatelessWidget {
-  const _AppearanceDialog();
+class SettingsDialog extends StatelessWidget {
+  const SettingsDialog({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -274,35 +392,14 @@ class _AppearanceDialog extends StatelessWidget {
     return Dialog(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 520),
-        child: Padding(
+        child: SingleChildScrollView(
           padding: dialogPadding,
           child: PixelColumn(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Appearance', style: displayStyle(28, p.ink)),
+              Text('Settings', style: displayStyle(28, p.ink)),
               const SizedBox(height: 16),
-              Text('THEME', style: capsLabel(p.inkMuted)),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final palette in palettes)
-                    PixelTooltip(
-                      message: palette.name,
-                      child: Hoverable(
-                        onTap: () => state.setTheme(palette.name),
-                        builder: (_) => Container(
-                          padding: const EdgeInsets.all(2),
-                          decoration: SmoothGradientDecoration(shape: BoxShape.circle, border: Border.all(color: palette.name == state.themeName ? p.accent : Colors.transparent, width: 2)),
-                          child: _Swatch(palette: palette, size: 32),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 20),
               Text('CHINESE FONT', style: capsLabel(p.inkMuted)),
               const SizedBox(height: 8),
               PixelRow(
@@ -311,17 +408,21 @@ class _AppearanceDialog extends StatelessWidget {
                     Hoverable(
                       onTap: () => state.setChineseFont(font),
                       builder: (hover) => AnimatedContainer(
-                        duration: context.themed(Motion.click),
+                        duration: context.themed(Motion.hover),
+                        curve: Motion.hoverCurve,
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                         decoration: BoxDecoration(
-                          color: Fonts.zh == font ? p.empty : (hover ? p.empty.withValues(alpha: 0.5) : Colors.transparent),
+                          color: Fonts.zh == font ? p.empty : p.empty.withValues(alpha: hover ? 0.5 : 0),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: Fonts.zh == font ? p.accent : p.border),
                         ),
                         child: PixelColumn(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text('学习汉字', style: TextStyle(fontFamily: font, fontSize: 22, color: p.ink, height: 1.3, fontVariations: font == Fonts.zhSans ? const [FontVariation('wght', 400)] : null)),
+                            Text(
+                              '學習漢字',
+                              style: TextStyle(fontFamily: font, fontSize: 22, color: p.ink, height: 1.3, fontVariations: font == Fonts.zhSans ? const [FontVariation('wght', 400)] : null),
+                            ),
                             Text(name, style: bodyStyle(p.inkMuted, size: 12)),
                           ],
                         ),
@@ -332,14 +433,44 @@ class _AppearanceDialog extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 20),
+              Text('DAILY STUDY', style: capsLabel(p.inkMuted)),
+              const SizedBox(height: 8),
+              PixelRow(
+                children: [
+                  for (final minutes in const [10, 20, 40]) ...[
+                    Hoverable(
+                      onTap: () => state.setDailyMinutes(minutes),
+                      builder: (hover) => AnimatedContainer(
+                        duration: context.themed(Motion.hover),
+                        curve: Motion.hoverCurve,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: state.dailyMinutes == minutes ? p.empty : p.empty.withValues(alpha: hover ? 0.5 : 0),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: state.dailyMinutes == minutes ? p.accent : p.border),
+                        ),
+                        child: Text('$minutes min', style: bodyStyle(p.ink, size: 14, weight: FontWeight.w500)),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text('New lessons ease off so your reviews and new words fit in about this long a day.', style: bodyStyle(p.inkMuted, size: 14)),
+              const SizedBox(height: 20),
+              if (state.sync case final sync?) ...[Text('GOOGLE SYNC', style: capsLabel(p.inkMuted)), const SizedBox(height: 8), SyncSection(sync: sync), const SizedBox(height: 20)],
               Text('WHERE THE COURSE COMES FROM', style: capsLabel(p.inkMuted)),
               const SizedBox(height: 8),
               Text(
-                'Words from the HSK 3.0 list, meanings from CC-CEDICT, character parts from Make Me a Hanzi. Sentences were written by native speakers on Tatoeba (CC BY). Reading passages labelled AI, grammar notes and some short meanings were written by AI, and passages are never tested.',
+                'Words from the HSK 3.0 list, meanings from CC-CEDICT, character parts from Make Me a Hanzi. Traditional forms use OpenCC. Sentences were written by native speakers on Tatoeba (CC BY). Fonts are Noto Sans TC and LXGW WenKai (Open Font License). Sentences and passages labelled AI, grammar notes and some short meanings were written by AI, and labelled text is never tested.',
                 style: bodyStyle(p.inkMuted, size: 14),
               ),
               const SizedBox(height: 12),
-              Align(alignment: Alignment.centerRight, child: PillButton(label: 'Done', primary: true, onTap: () => Navigator.of(context).pop())),
+              Align(
+                alignment: Alignment.centerRight,
+                child: PillButton(label: 'Done', primary: true, onTap: () => Navigator.of(context).pop()),
+              ),
             ],
           ),
         ),

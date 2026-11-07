@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../state/app_state.dart';
@@ -28,7 +30,7 @@ class SessionEnd extends StatelessWidget {
     final exam = s.kind == SessionKind.exam;
     final passed = exam && s.score >= AppState.passMark;
     final title = switch (s.kind) {
-      SessionKind.exam when passed => 'Level ${s.level!.n} passed',
+      SessionKind.exam when passed => 'Band ${s.level!.band} passed',
       SessionKind.exam => 'Not quite yet',
       SessionKind.lesson => 'Lesson done',
       SessionKind.review => state.dueCount == 0 ? 'All caught up' : 'Good work',
@@ -44,20 +46,18 @@ class SessionEnd extends StatelessWidget {
     final next = state.nextLesson;
     final more = state.dueCount;
 
-    final Session? following = state.finishedCourse
-        ? null
-        : more > 0 && s.kind != SessionKind.review
+    final Session? following = more > 0
         ? Session.review(state)
-        : s.kind == SessionKind.review && more > 0
-        ? Session.review(state)
-        : next != null
-        ? Session.forLesson(state, next)
-        : Session.exam(state, state.level);
+        : state.examReady
+        ? Session.exam(state, state.level)
+        : state.canLearnToday
+        ? Session.forLesson(state, next!)
+        : null;
     final followLabel = more > 0
         ? 'Review $more due'
-        : next != null
-        ? 'Next lesson'
-        : 'Take the Level ${state.level.n} exam';
+        : state.examReady
+        ? 'Take the Band ${state.level.band} exam'
+        : 'Next lesson';
 
     return LayoutBuilder(
       builder: (context, box) => SingleChildScrollView(
@@ -80,9 +80,18 @@ class SessionEnd extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Stat(value: Text('${(s.score * 100).round()}%'), label: exam ? 'Score' : 'First try'),
                         Stat(
-                          value: RollingNumber(value: after, duration: Motion.page, style: displayStyle(38, p.ink)),
+                          value: PixelRow(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _RollUp(from: 0, to: (s.score * 100).round(), style: displayStyle(38, p.ink)),
+                              Text('%', style: displayStyle(38, p.ink)),
+                            ],
+                          ),
+                          label: exam ? 'Score' : 'First try',
+                        ),
+                        Stat(
+                          value: _RollUp(from: before, to: after, style: displayStyle(38, p.ink)),
                           label: 'Characters',
                           note: after > before ? '+${after - before} new' : null,
                         ),
@@ -110,7 +119,7 @@ class SessionEnd extends StatelessWidget {
                           Text('YOU CAN NOW READ THIS', style: capsLabel(p.inkMuted)),
                           const SizedBox(height: 8),
                           Text(reward.zh, style: zhStyle(28, p.ink)),
-                          Text(reward.en, style: bodyStyle(p.inkMuted)),
+                          Text(reward.shownEn, style: bodyStyle(p.inkMuted)),
                         ],
                       ),
                     ),
@@ -152,17 +161,51 @@ class SessionEnd extends StatelessWidget {
     final s = session;
     switch (s.kind) {
       case SessionKind.exam:
-        if (passed) {
-          final before = s.level!.n > 1 ? state.course.levels[s.level!.n - 2].readable : 0;
-          return 'You passed on sentences you had never seen. ${s.level!.readable - before} more real sentences are now within reach.';
-        }
+        if (passed) return 'You passed on sentences you had never seen, and all of Band ${s.level!.band} is behind you.';
         return 'You need ${(AppState.passMark * 100).round()}% and got ${(s.score * 100).round()}%. What you missed is back in your reviews, and the next exam uses different sentences.';
       case SessionKind.lesson:
+        if (state.passed > s.passedBefore) return _clearedLine(state);
         final l = state.level;
         final left = l.lessons.length - state.doneInLevel(l);
-        return left == 0 ? 'Level ${l.n} is ready for its exam.' : '$left ${left == 1 ? 'lesson' : 'lessons'} until the Level ${l.n} exam.';
+        if (left > 0) return '$left ${left == 1 ? 'lesson' : 'lessons'} left in Level ${l.n}.';
+        return 'That’s every lesson in Level ${l.n}. It clears once ${(AppState.holdShare * 100).round()}% of its words have held through a review.';
       case SessionKind.review:
+        if (state.passed > s.passedBefore) return _clearedLine(state);
         return 'Each review pushes these further out, so they take less and less of your time.';
     }
   }
+
+  String _clearedLine(AppState state) => 'Level ${state.passed} cleared: its words have held through your reviews.';
+}
+
+/// A number that starts at [from] and rolls to [to], once the page has faded in.
+class _RollUp extends StatefulWidget {
+  const _RollUp({required this.from, required this.to, required this.style});
+  final int from, to;
+  final TextStyle style;
+
+  @override
+  State<_RollUp> createState() => _RollUpState();
+}
+
+class _RollUpState extends State<_RollUp> {
+  late int _value = widget.from;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer(Motion.morph, () {
+      if (mounted) setState(() => _value = widget.to);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => RollingNumber(value: _value, duration: Motion.page, style: widget.style);
 }

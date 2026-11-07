@@ -43,6 +43,18 @@ void main() {
     expect(bad, isEmpty);
   });
 
+  test('colours fade their own colour, not transparent black', () {
+    // A colour eased from Colors.transparent dips through a darker shade. A
+    // field's or button's hover colour, and a menu's turned-off surface tint,
+    // are never eased to, so they're the exceptions.
+    final bad = [
+      for (final f in files)
+        for (final line in f.readAsLinesSync())
+          if (line.contains('Colors.transparent') && !line.contains('overlayColor:') && !line.contains('hoverColor:') && !line.contains('surfaceTintColor:')) '${f.path}  ${line.trim()}',
+    ];
+    expect(bad, isEmpty);
+  });
+
   test('no emojis anywhere in the interface', () {
     final emoji = RegExp(r'[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]', unicode: true);
     final bad = [for (final f in files) if (emoji.hasMatch(f.readAsStringSync())) f.path];

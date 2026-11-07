@@ -1,9 +1,14 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
+import 'dart:math' show Random;
 
 import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart';
 
 import 'fsrs.dart';
+
+part 'store_sync.dart';
 
 /// Everything you've done, in one SQLite file. Reviews are only ever added, so
 /// the history can be replayed under a better scheduler or merged across devices.
@@ -13,7 +18,10 @@ class Store {
   final Database _db;
   final String folder;
 
-  static const _schema = 1;
+  /// Words' old spellings to their current ones, from the course.
+  Map<String, String> renamedWords = const {};
+
+  static const _schema = 2;
 
   static Store open(String folder) {
     Directory(folder).createSync(recursive: true);
@@ -34,6 +42,26 @@ class Store {
         CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT);
       ''');
     }
+    if (version < 2) {
+      // For sync. A row's origin is the device it came from: none if it was
+      // made here.
+      db.execute('''
+        BEGIN;
+        ALTER TABLE reviews ADD COLUMN origin TEXT;
+        ALTER TABLE lessons ADD COLUMN origin TEXT;
+        ALTER TABLE exams ADD COLUMN origin TEXT;
+        ALTER TABLE reads ADD COLUMN origin TEXT;
+        CREATE INDEX reviews_card ON reviews(card, at_ms);
+        CREATE TABLE dues(card TEXT, at_ms INTEGER, origin TEXT);
+        CREATE INDEX dues_card ON dues(card, at_ms);
+        CREATE TABLE day_others(date TEXT, machine TEXT, reviews INTEGER, lessons INTEGER, PRIMARY KEY(date, machine));
+        CREATE TABLE sync_meta(key TEXT PRIMARY KEY, value TEXT, ts INTEGER, origin TEXT);
+        CREATE TABLE sync_dirty(date TEXT PRIMARY KEY, n INTEGER);
+        CREATE TABLE sync_seen(file TEXT PRIMARY KEY, stamp TEXT);
+        PRAGMA user_version = 2;
+        COMMIT;
+      ''');
+    }
     db.execute('PRAGMA user_version = $_schema');
     return store;
   }
@@ -51,7 +79,30 @@ class Store {
   }
 
   String? meta(String key) => _db.select('SELECT value FROM meta WHERE key = ?', [key]).firstOrNull?['value'] as String?;
-  void setMeta(String key, String value) => _db.execute('INSERT OR REPLACE INTO meta VALUES(?, ?)', [key, value]);
+  void setMeta(String key, String value) {
+    _db.execute('INSERT OR REPLACE INTO meta VALUES(?, ?)', [key, value]);
+    if (!_syncedMeta.contains(key)) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _db.execute('INSERT OR REPLACE INTO sync_meta(key, value, ts) VALUES(?, ?, ?)', [key, value, now]);
+    _markUnsent(_dateOf(now));
+  }
+
+  /// The change file a moment belongs in. By UTC, the same on every device.
+  static String _dateOf(int ms) => DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toIso8601String().substring(0, 10);
+
+  void _markUnsent(String date) => _db.execute('INSERT INTO sync_dirty VALUES(?, 1) ON CONFLICT(date) DO UPDATE SET n = n + 1', [date]);
+
+  T _transaction<T>(T Function() action) {
+    _db.execute('BEGIN');
+    try {
+      final result = action();
+      _db.execute('COMMIT');
+      return result;
+    } catch (_) {
+      _db.execute('ROLLBACK');
+      rethrow;
+    }
+  }
 
   Map<String, Memory> cards() => {
     for (final r in _db.select('SELECT * FROM cards'))
@@ -69,21 +120,34 @@ class Store {
     _db.execute('BEGIN');
     _db.execute('INSERT OR REPLACE INTO cards VALUES(?,?,?,?,?,?,?)', [id, m.stability, m.difficulty, m.lastMs, m.dueMs, m.reps, m.lapses]);
     _db.execute('INSERT INTO reviews(card, at_ms, rating, taken_ms) VALUES(?,?,?,?)', [id, m.lastMs, rating.value, takenMs]);
+    _markUnsent(_dateOf(m.lastMs));
     _db.execute('COMMIT');
   }
 
   /// Brings a card due now, as a failed exam does for what you missed.
-  void makeDue(String id, int nowMs) => _db.execute('UPDATE cards SET due_ms = ? WHERE id = ?', [nowMs, id]);
+  void makeDue(String id, int nowMs) {
+    _db.execute('UPDATE cards SET due_ms = ? WHERE id = ?', [nowMs, id]);
+    _db.execute('INSERT INTO dues(card, at_ms) VALUES(?, ?)', [id, nowMs]);
+    _markUnsent(_dateOf(nowMs));
+  }
 
   Set<String> lessonsDone() => {for (final r in _db.select('SELECT id FROM lessons')) r['id'] as String};
-  void finishLesson(String id, int nowMs) => _db.execute('INSERT OR IGNORE INTO lessons VALUES(?, ?)', [id, nowMs]);
+  void finishLesson(String id, int nowMs) {
+    _db.execute('INSERT OR IGNORE INTO lessons(id, at_ms) VALUES(?, ?)', [id, nowMs]);
+    _markUnsent(_dateOf(nowMs));
+  }
 
   int levelsPassed() => (_db.select('SELECT MAX(level) m FROM exams WHERE passed = 1').first['m'] as int?) ?? 0;
-  void saveExam(int level, int nowMs, double score, bool passed) =>
-      _db.execute('INSERT INTO exams(level, at_ms, score, passed) VALUES(?,?,?,?)', [level, nowMs, score, passed ? 1 : 0]);
+  void saveExam(int level, int nowMs, double score, bool passed) {
+    _db.execute('INSERT INTO exams(level, at_ms, score, passed) VALUES(?,?,?,?)', [level, nowMs, score, passed ? 1 : 0]);
+    _markUnsent(_dateOf(nowMs));
+  }
 
   Set<String> reads() => {for (final r in _db.select('SELECT id FROM reads')) r['id'] as String};
-  void markRead(String id, int nowMs) => _db.execute('INSERT OR REPLACE INTO reads VALUES(?, ?)', [id, nowMs]);
+  void markRead(String id, int nowMs) {
+    _db.execute('INSERT OR REPLACE INTO reads(id, at_ms) VALUES(?, ?)', [id, nowMs]);
+    _markUnsent(_dateOf(nowMs));
+  }
 
   Map<String, DayRow> days() => {
     for (final r in _db.select('SELECT * FROM days'))
@@ -97,9 +161,12 @@ class Store {
       ),
   };
 
-  void saveDay(DayRow d) => _db.execute('INSERT OR REPLACE INTO days VALUES(?,?,?,?,?,?)', [
-    d.date, d.target, d.reviews, d.lessons, d.complete ? 1 : 0, d.frozen ? 1 : 0,
-  ]);
+  void saveDay(DayRow d) {
+    _db.execute('INSERT OR REPLACE INTO days VALUES(?,?,?,?,?,?)', [
+      d.date, d.target, d.reviews, d.lessons, d.complete ? 1 : 0, d.frozen ? 1 : 0,
+    ]);
+    _markUnsent(d.date);
+  }
 
   /// Recalled share of reviews (not first-time teaching) by day, for the last [days] days.
   List<(int at, int rating)> recentReviews(int sinceMs) => [

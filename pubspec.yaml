@@ -12,6 +12,7 @@ dependencies:
   sqlite3: ^3.8.0
   path_provider: ^2.1.6
   path: ^1.9.1
+  crypto: ^3.0.7
 
 dev_dependencies:
   flutter_test:
@@ -55,13 +56,16 @@ flutter:
           weight: 600
     - family: Yue Kai
       fonts:
-        - asset: assets/fonts/chinese/WenKai.ttf
+        - asset: assets/fonts/chinese/WenKaiTC.ttf
           weight: 400
-        - asset: assets/fonts/chinese/WenKaiMedium.ttf
+        - asset: assets/fonts/chinese/WenKaiTCMedium.ttf
           weight: 600
     - family: Yue Sans
       fonts:
-        - asset: assets/fonts/chinese/NotoSansSC.ttf
+        - asset: assets/fonts/chinese/NotoSansTC.ttf
+    - family: Yue Rare
+      fonts:
+        - asset: assets/fonts/chinese/WenKaiRare.ttf
 
 # Linux builds use the system SQLite package; other platforms keep their native asset.
 hooks:

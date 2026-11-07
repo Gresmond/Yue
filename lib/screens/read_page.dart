@@ -6,7 +6,9 @@ import '../theme/pixels.dart';
 import '../theme/tokens.dart';
 import '../widgets/common.dart';
 import '../widgets/fade_through.dart';
+import '../widgets/feedback.dart';
 import '../widgets/hover_fill.dart';
+import '../widgets/smooth_task_scroll.dart';
 import '../widgets/tile.dart';
 
 /// Reading for its own sake: nothing here is tested. Sentence sets are written by
@@ -34,7 +36,7 @@ class _ReadPageState extends State<ReadPage> {
     final course = state.course;
     final sentences = [
       for (final s in course.sentences.values)
-        if (s.level == level && !s.exam && s.zh.length >= 6) s,
+        if (s.level == level && !s.exam && !s.ai && s.zh.length >= 6) s,
     ]..sort((a, b) => a.id.compareTo(b.id));
     final chosen = sentences.take(8);
     return _Text(
@@ -73,7 +75,8 @@ class _List extends StatelessWidget {
     final state = AppScope.of(context);
     final open = state.course.passages.where(state.passageOpen).toList();
     final locked = state.course.passages.where((x) => !state.passageOpen(x)).toList();
-    return ListView(
+    return SmoothTaskScroll(builder: (context, controller) => ListView(
+      controller: controller,
       padding: const EdgeInsets.fromLTRB(32, 4, 32, 32),
       children: [
         Tile(
@@ -112,7 +115,7 @@ class _List extends StatelessWidget {
           ),
         ),
       ],
-    );
+    ));
   }
 }
 
@@ -129,10 +132,12 @@ class _Row extends StatelessWidget {
     final p = context.palette;
     return Hoverable(
       onTap: onTap,
+      behavior: HitTestBehavior.opaque,
       builder: (hover) => AnimatedContainer(
         duration: context.themed(Motion.hover),
+        curve: Motion.hoverCurve,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(color: hover && onTap != null ? p.empty : Colors.transparent, borderRadius: BorderRadius.circular(12)),
+        decoration: BoxDecoration(color: hover && onTap != null ? p.empty : p.empty.withValues(alpha: 0), borderRadius: BorderRadius.circular(12)),
         child: PixelRow(
           children: [
             Expanded(child: Text(title, style: bodyStyle(lockedAt != null ? p.inkMuted : p.ink, weight: FontWeight.w500))),
@@ -163,7 +168,8 @@ class _ReaderState extends State<_Reader> {
     final p = context.palette;
     final state = AppScope.read(context);
     final t = widget.text;
-    return SingleChildScrollView(
+    return SmoothTaskScroll(builder: (context, controller) => SingleChildScrollView(
+      controller: controller,
       padding: const EdgeInsets.fromLTRB(32, 4, 32, 32),
       child: Align(
         alignment: Alignment.topCenter,
@@ -186,7 +192,10 @@ class _ReaderState extends State<_Reader> {
                 Divider(height: 1, color: p.borderSoft),
                 const SizedBox(height: 12),
                 GlossLine(token: _selected == null ? null : t.toks[_selected!], extra: t.extra),
-                if (_translation) ...[const SizedBox(height: 12), Text(t.en, style: bodyStyle(p.inkMuted))],
+                Unfold(
+                  open: _translation,
+                  builder: (context) => Padding(padding: const EdgeInsets.only(top: 12), child: Text(t.en, style: bodyStyle(p.inkMuted))),
+                ),
                 const SizedBox(height: 16),
                 Wrap(
                   spacing: 12,
@@ -208,6 +217,6 @@ class _ReaderState extends State<_Reader> {
           ),
         ),
       ),
-    );
+    ));
   }
 }

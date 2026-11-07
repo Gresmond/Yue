@@ -5,12 +5,14 @@ import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../theme/pixels.dart';
 import '../theme/tokens.dart';
+import 'fade_through.dart';
 import 'hover_fill.dart';
 import 'smooth_gradient.dart';
 
 /// Chinese text in the chosen font. The sans font is variable, so it's told its weight.
 TextStyle zhStyle(double size, Color color, {FontWeight weight = FontWeight.w400, double height = 1.35}) => TextStyle(
   fontFamily: Fonts.zh,
+  fontFamilyFallback: Fonts.zhFallback,
   fontSize: size,
   fontWeight: weight,
   height: height,
@@ -55,7 +57,7 @@ class PillButton extends StatelessWidget {
           decoration: BoxDecoration(
             color: enabled ? (hover ? Color.lerp(fill, primary || tone != null ? p.ink : p.empty, 0.14) : fill) : fill.withValues(alpha: 0.45),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: primary || tone != null ? Colors.transparent : p.border),
+            border: Border.all(color: primary || tone != null ? p.border.withValues(alpha: 0) : p.border),
           ),
           child: PixelRow(
             mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
@@ -169,9 +171,9 @@ class TappableText extends StatelessWidget {
                   duration: context.themed(Motion.hover),
                   curve: Motion.hoverCurve,
                   decoration: BoxDecoration(
-                    color: selected == i ? p.other.withValues(alpha: 0.3) : (hover ? p.empty : Colors.transparent),
+                    color: selected == i ? p.other.withValues(alpha: 0.3) : (hover ? p.empty : p.empty.withValues(alpha: 0)),
                     borderRadius: BorderRadius.circular(4),
-                    border: Border(bottom: BorderSide(color: known ? Colors.transparent : p.accent, width: 2)),
+                    border: Border(bottom: BorderSide(color: p.accent.withValues(alpha: known ? 0 : 1), width: 2)),
                   ),
                   child: Text(t, style: style),
                 );
@@ -206,15 +208,20 @@ class GlossLine extends StatelessWidget {
         : other ?? ('', t == null ? 'Tap a word for its meaning.' : '');
     return ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 28),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Text.rich(
-          TextSpan(
-            children: [
-              if (t != null) TextSpan(text: '$t  ', style: zhStyle(18, p.ink)),
-              if (py.isNotEmpty) TextSpan(text: '$py  ', style: bodyStyle(p.accent, weight: FontWeight.w600)),
-              TextSpan(text: en, style: bodyStyle(t == null ? p.inkMuted : p.ink)),
-            ],
+      child: FadeThrough(
+        duration: Motion.morph,
+        layoutBuilder: FadeThrough.aligned(Alignment.centerLeft),
+        child: Align(
+          key: ValueKey(t),
+          alignment: Alignment.centerLeft,
+          child: Text.rich(
+            TextSpan(
+              children: [
+                if (t != null) TextSpan(text: '$t  ', style: zhStyle(18, p.ink)),
+                if (py.isNotEmpty) TextSpan(text: '$py  ', style: bodyStyle(p.accent, weight: FontWeight.w600)),
+                TextSpan(text: en, style: bodyStyle(t == null ? p.inkMuted : p.ink)),
+              ],
+            ),
           ),
         ),
       ),

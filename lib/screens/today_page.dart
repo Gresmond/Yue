@@ -7,6 +7,7 @@ import '../theme/pixels.dart';
 import '../theme/tokens.dart';
 import '../widgets/common.dart';
 import '../widgets/the_page.dart';
+import '../widgets/smooth_task_scroll.dart';
 import '../widgets/tile.dart';
 import 'shell.dart';
 
@@ -22,7 +23,8 @@ class TodayPage extends StatelessWidget {
     final left = [_NextUp(onStart: onStart), const SizedBox(height: 16), _LevelCard(onTab: onTab), if (state.sentenceOfTheDay != null) ...[const SizedBox(height: 16), const _Sentence()]];
     final right = const _PageCard();
     return SizedBox.expand(
-      child: SingleChildScrollView(
+      child: SmoothTaskScroll(builder: (context, controller) => SingleChildScrollView(
+      controller: controller,
       padding: const EdgeInsets.fromLTRB(32, 4, 32, 32),
       child: wide
           ? PixelRow(
@@ -34,7 +36,7 @@ class TodayPage extends StatelessWidget {
               ],
             )
           : PixelColumn(crossAxisAlignment: CrossAxisAlignment.stretch, children: [...left, const SizedBox(height: 16), right]),
-      ),
+      )),
     );
   }
 }
@@ -51,6 +53,7 @@ class _NextUp extends StatelessWidget {
     final lesson = state.nextLesson;
     final today = state.today;
     final String title, detail, action;
+    var primary = true;
     final Session Function() make;
     if (due > 0) {
       final minutes = (due * 12 / 60).ceil();
@@ -63,21 +66,35 @@ class _NextUp extends StatelessWidget {
       detail = 'Every level passed. Read everything you can find.';
       action = '';
       make = () => Session.review(state);
-    } else if (lesson != null) {
+    } else if (state.examReady) {
+      title = 'Band ${state.level.band} exam';
+      detail = 'Sentences you have never seen, from the whole band. Pass with 80% to move on.';
+      action = 'Take the exam';
+      make = () => Session.exam(state, state.level);
+    } else if (lesson == null) {
+      final l = state.level;
+      final left = state.heldNeeded(l) - state.heldInLevel(l);
+      title = 'Level ${l.n} is settling';
+      detail = '$left more ${left == 1 ? 'word needs' : 'words need'} to hold through a review before ${state.course.isBandEnd(l) ? 'the band exam' : 'Level ${l.n + 1}'}. ${_nextReview(state)}';
+      action = '';
+      make = () => Session.review(state);
+    } else if (!state.canLearnToday) {
+      title = 'That’s enough new words';
+      detail = state.minutesToday >= state.dailyMinutes
+          ? 'You’ve reached your ${state.dailyMinutes} minutes for today. Letting these settle helps them stick.'
+          : 'More new words now would push your reviews past ${state.dailyMinutes} minutes a day. New lessons return as your reviews get further apart.';
+      action = 'One more anyway';
+      primary = false;
+      make = () => Session.forLesson(state, lesson);
+    } else {
       final parts = [
         '${lesson.words.length} new words',
-        if (lesson.radicals.isNotEmpty) '${lesson.radicals.length} building ${lesson.radicals.length == 1 ? 'block' : 'blocks'}',
         if (lesson.grammar.isNotEmpty) '${lesson.grammar.length} grammar ${lesson.grammar.length == 1 ? 'point' : 'points'}',
       ];
       title = today.lessons > 0 ? 'One more lesson?' : (state.learned.isEmpty ? 'Your first lesson' : 'Next lesson');
       detail = '${parts.join(', ')}. About 10 minutes.';
       action = today.lessons > 0 ? 'Keep going' : 'Start lesson';
       make = () => Session.forLesson(state, lesson);
-    } else {
-      title = 'Level ${state.level.n} exam';
-      detail = 'Sentences you have never seen. Pass with 80% to move up.';
-      action = 'Take the exam';
-      make = () => Session.exam(state, state.level);
     }
     return Tile(
       child: PixelColumn(
@@ -91,11 +108,18 @@ class _NextUp extends StatelessWidget {
           Text(detail, style: bodyStyle(p.inkMuted)),
           if (action.isNotEmpty) ...[
             const SizedBox(height: 16),
-            PillButton(label: action, primary: true, onTap: () => onStart(make())),
+            PillButton(label: action, primary: primary, onTap: () => onStart(make())),
           ],
         ],
       ),
     );
+  }
+
+  String _nextReview(AppState state) {
+    final at = state.nextDueMs;
+    if (at == null) return '';
+    final days = AppState.dayOf(DateTime.fromMillisecondsSinceEpoch(at)).difference(AppState.dayOf(state.now)).inDays;
+    return days <= 0 ? 'More reviews come due later today.' : (days == 1 ? 'Your next reviews come tomorrow.' : 'Your next reviews come in $days days.');
   }
 }
 
@@ -110,6 +134,8 @@ class _LevelCard extends StatelessWidget {
     final l = state.level;
     final done = state.doneInLevel(l), total = l.lessons.length;
     final left = total - done;
+    final held = state.heldInLevel(l), needed = state.heldNeeded(l);
+    final goal = state.course.isBandEnd(l) ? 'the band exam' : 'Level ${l.n + 1}';
     return Tile(
       child: PixelColumn(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -117,10 +143,14 @@ class _LevelCard extends StatelessWidget {
         children: [
           TileHeader(title: 'Level ${l.n}', caption: '$done of $total lessons'),
           const SizedBox(height: 12),
-          ProgressTrack(value: state.levelProgress(l)),
+          ProgressTrack(value: held / needed),
           const SizedBox(height: 12),
           Text(
-            left == 0 ? 'Only the exam stands between you and Level ${l.n + 1}.' : '$left ${left == 1 ? 'lesson' : 'lessons'} from the exam, and from ${l.readable - state.readableSentences} more real sentences you could read.',
+            state.examReady
+                ? 'Only the exam stands between you and ${l.n < state.course.levels.length ? 'Band ${l.band + 1}' : 'the end of the course'}.'
+                : left == 0
+                ? '$held of the $needed words needed have held through a review. Then, $goal.'
+                : '$held of the $needed words needed have held through a review, with $left ${left == 1 ? 'lesson' : 'lessons'} to go before $goal.',
             style: bodyStyle(p.inkMuted),
           ),
         ],

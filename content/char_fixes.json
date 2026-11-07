@@ -1,0 +1,12 @@
+{
+"隻": {"en": "single; measure word for animals and one of a pair", "type": "ideographic", "hint": "A hand 又 holding one bird 隹", "sem": "", "pho": ""},
+"裡": {"en": "inside, in", "type": "pictophonetic", "hint": "clothing", "sem": "衤", "pho": "里"},
+"幹": {"en": "to do; trunk, main part", "type": "pictophonetic", "hint": "", "sem": "干", "pho": ""},
+"乾": {"en": "dry", "type": "", "hint": "", "sem": "", "pho": ""},
+"個": {"en": "measure word for people and things; individual"},
+"蘋": {"en": "apple (in 蘋果)"},
+"覺": {"en": "to feel; to wake; (jiào) a sleep"},
+"這": {"sem": "辶", "pho": "言", "hint": "walk"},
+"發": {"en": "to issue, to send out; to happen"},
+"髮": {"en": "hair"}
+}

@@ -63,7 +63,6 @@ void main() {
           expect(lesson.words.every(course.words.containsKey), isTrue);
           expect(lesson.sentences.every(course.sentences.containsKey), isTrue);
           expect(lesson.grammar.every(course.grammar.containsKey), isTrue);
-          expect(lesson.radicals.every(course.radicals.containsKey), isTrue);
         }
         expect(l.exam.every(course.sentences.containsKey), isTrue);
         expect(l.exam.length, greaterThanOrEqualTo(12));
@@ -92,10 +91,30 @@ void main() {
   });
 
   group('Sessions', () {
+    void answerRight(Session s) {
+      final step = s.current;
+      if (step is Check) s.answer(Rating.good);
+      if (step is MatchPairs) {
+        for (final w in step.words) {
+          s.answerMatch(w, correct: true);
+        }
+      }
+    }
+
     void runAll(Session s) {
       while (!s.finished) {
-        if (s.current is Check) s.answer(Rating.good);
+        answerRight(s);
         s.next();
+      }
+    }
+
+    /// Passes [days] days, reviewing everything due correctly each one.
+    void reviewFor(AppState state, int days) {
+      for (var d = 0; d < days; d++) {
+        now = now.add(const Duration(days: 1));
+        state.openDay();
+        final s = Session.review(state, limit: 100000);
+        if (s.steps.isNotEmpty) runAll(s);
       }
     }
 
@@ -115,42 +134,236 @@ void main() {
       final lesson = state.nextLesson!;
       final s = Session.forLesson(state, lesson);
       while (s.current is! Check) {
+        answerRight(s);
         s.next();
       }
       final card = (s.current as Check).card;
       final total = s.total;
+      final wrongBefore = s.wrong;
       s.answer(Rating.again);
       expect(s.total, total + 1);
-      expect(s.wrong, 1);
+      expect(s.wrong, wrongBefore + 1);
+      expect(state.cards[card], isNull, reason: 'it joins reviews only once answered correctly');
       s.next();
       while (s.current is! Check || (s.current as Check).card != card) {
-        if (s.current is Check) s.answer(Rating.good);
+        answerRight(s);
         s.next();
       }
       s.answer(Rating.good);
-      expect(s.right + s.wrong, greaterThan(1));
-      expect(state.cards[card]!.lapses, 1);
+      expect(s.wrong, wrongBefore + 1);
+      expect(state.cards[card]!.lapses, 0);
       expect(state.cards[card]!.reps, 1);
+      expect(state.cards[card]!.stability, Fsrs.w[Rating.hard.value - 1]);
     });
 
-    test('passing the exam opens the next level, failing doesn\'t', () {
+    test('nothing is tested straight after its own card', () {
+      for (final lesson in [course.levels.first.lessons.first, course.levels.last.lessons.last]) {
+        final state = open();
+        state.learned.addAll(course.words.keys.take(40));
+        final steps = Session.forLesson(state, lesson).steps;
+        for (var i = 0; i + 1 < steps.length; i++) {
+          final (a, b) = (steps[i], steps[i + 1]);
+          if (a is TeachWord && b is MatchPairs) expect(b.fresh, isNot(contains(a.word)));
+        }
+        final checked = steps.whereType<MatchPairs>().expand((m) => m.fresh).map((w) => w.w).toList();
+        expect(checked..sort(), lesson.words.toList()..sort(), reason: 'every word is checked once');
+      }
+    });
+
+    test('a first lesson shows only what it has taught, and no radicals', () {
+      final state = open();
+      final lesson = course.levels.first.lessons.first;
+      final steps = Session.forLesson(state, lesson).steps;
+      final taught = <String>{};
+      for (final step in steps) {
+        if (step is TeachWord) {
+          taught.add(step.word.w);
+          for (final t in step.example?.toks ?? const <String>[]) {
+            if (course.words.containsKey(t) && !course.names.containsKey(t)) expect(taught, contains(t));
+          }
+        }
+        if (step is MatchPairs) {
+          for (final w in step.words) {
+            expect(taught, contains(w.w), reason: 'a match holds only words already taught');
+          }
+        }
+      }
+    });
+
+    test('a missed match joins reviews only when got right on a later check', () {
+      final state = open();
+      final s = Session.forLesson(state, state.nextLesson!);
+      while (s.current is! MatchPairs) {
+        s.next();
+      }
+      final first = s.current as MatchPairs;
+      final word = first.fresh.first;
+      s.answerMatch(word, correct: false);
+      s.answerMatch(word, correct: true);
+      expect(state.cards['wr:${word.w}'], isNull);
+      final total = s.total;
+      s.next();
+      expect(s.total, total + 1);
+      while (s.current is! MatchPairs || !(s.current as MatchPairs).fresh.contains(word)) {
+        answerRight(s);
+        s.next();
+      }
+      answerRight(s);
+      expect(state.cards['wr:${word.w}']!.stability, Fsrs.w[Rating.hard.value - 1]);
+      expect(s.wrong, 1);
+    });
+
+    test('doing a finished lesson again is practice: schedules stay put', () {
+      final state = open();
+      final lesson = state.nextLesson!;
+      runAll(Session.forLesson(state, lesson));
+      final before = {for (final e in state.cards.entries) e.key: e.value.reps};
+      final lessons = state.today.lessons;
+      runAll(Session.forLesson(state, lesson));
+      expect({for (final e in state.cards.entries) e.key: e.value.reps}, before);
+      expect(state.today.lessons, lessons);
+    });
+
+    test('old radical cards never come due', () {
+      var state = open();
+      state.store.saveReview('rad:亻', Fsrs.review(null, Rating.good, 0), Rating.good, 0);
+      state = open();
+      expect(state.cards.keys.where((id) => id.startsWith('rad:')), isEmpty);
+      expect(state.dueCount, 0);
+    });
+
+    test('cards for things the course no longer has never come due', () {
+      var state = open();
+      state.store.saveReview('sr:gone', Fsrs.review(null, Rating.good, 0), Rating.good, 0);
+      state.store.saveReview('wr:不在課程', Fsrs.review(null, Rating.good, 0), Rating.good, 0);
+      state = open();
+      expect(state.cards, isEmpty);
+      expect(state.learned, isEmpty);
+      expect(state.dueCount, 0);
+    });
+
+    test('AI sentences are only read: never built, scored or scheduled', () {
+      final state = open();
+      final course = state.course;
+      final lesson = course.levels.expand((l) => l.lessons).firstWhere((l) => l.sentences.any((id) => course.sentences[id]!.ai));
+      final s = Session.forLesson(state, lesson);
+      expect(s.steps.whereType<ReadAlong>(), isNotEmpty);
+      expect(s.steps.whereType<ReadSentence>().where((step) => step.sentence.ai), isEmpty);
+      expect(s.steps.whereType<BuildSentence>().where((step) => step.sentence.ai), isEmpty);
+      runAll(s);
+      expect(state.cards.keys.where((id) => id.startsWith('sr:ai') || id.startsWith('sb:ai')), isEmpty);
+      final ai = s.steps.whereType<ReadAlong>().first.sentence;
+      state.store.saveReview('sr:${ai.id}', Fsrs.review(null, Rating.good, 0), Rating.good, 0);
+      expect(open().cards, isNot(contains('sr:${ai.id}')));
+    });
+
+    test('no match holds two words with the same meaning, and every word gets one', () {
+      final state = open();
+      for (final l in state.course.levels) {
+        for (final lesson in l.lessons) {
+          final matches = Session.forLesson(state, lesson).steps.whereType<MatchPairs>().toList();
+          for (final m in matches) {
+            expect(m.meanings.toSet().length, m.meanings.length, reason: '${lesson.id}: ${m.meanings}');
+          }
+          expect(matches.expand((m) => m.fresh).map((w) => w.w).toList()..sort(), lesson.words.toList()..sort(), reason: lesson.id);
+        }
+      }
+    });
+
+    test('a level clears once its lessons are done and 90% of its words are held', () {
       final state = open();
       final level = state.level;
-      for (final l in level.lessons) {
-        state.finishLesson(l);
+      for (final lesson in level.lessons) {
+        runAll(Session.forLesson(state, lesson));
       }
       expect(state.nextLesson, isNull);
-      final fail = Session.exam(state, level);
+      expect(state.level.n, 1, reason: 'finishing every lesson isn\'t enough: nothing has held yet');
+      reviewFor(state, 6);
+      expect(state.heldInLevel(level), greaterThanOrEqualTo(state.heldNeeded(level)));
+      expect(state.level.n, 2);
+      expect(state.passed, 1);
+      // A level stays cleared, including after a restart.
+      expect(open().passed, 1);
+    });
+
+    test('a level with every word held still waits for its lessons', () {
+      final state = open();
+      final level = state.level;
+      for (final lesson in level.lessons.take(level.lessons.length - 1)) {
+        runAll(Session.forLesson(state, lesson));
+      }
+      reviewFor(state, 6);
+      expect(state.heldInLevel(level), greaterThanOrEqualTo(state.heldNeeded(level)));
+      expect(state.level.n, 1, reason: 'a lesson is still to do');
+      runAll(Session.forLesson(state, level.lessons.last));
+      expect(state.level.n, 2);
+    });
+
+    /// All of [level] held, and every level before it cleared.
+    AppState reachExam(Level level) {
+      final state = open();
+      for (final l in state.course.levels.where((l) => l.n <= level.n)) {
+        for (final lesson in l.lessons) {
+          state.finishLesson(lesson);
+          for (final w in lesson.words) {
+            state.store.saveReview('wr:$w', Fsrs.review(null, Rating.easy, state.nowMs), Rating.easy, 0);
+          }
+        }
+      }
+      return open();
+    }
+
+    test('a band ends in an exam covering all of it: passing opens the next, failing doesn\'t', () {
+      final last = course.levels.lastWhere((l) => l.band == 1);
+      final state = reachExam(last);
+      expect(state.level.n, last.n);
+      expect(state.examReady, isTrue);
+      final fail = Session.exam(state, last);
       expect(fail.steps.whereType<ExamRead>().length, 10);
       while (!fail.finished) {
         fail.answer(Rating.again);
         fail.next();
       }
-      expect(state.level.n, 1);
-      final pass = Session.exam(state, level);
+      expect(state.level.n, last.n);
+      final pass = Session.exam(state, last);
+      final levels = course.levels.where((l) => l.band == 1).map((l) => l.n).toSet();
+      expect(pass.steps.whereType<ExamRead>().every((e) => e.sentence.level <= last.n), isTrue);
+      expect(levels.length, greaterThan(1));
       runAll(pass);
-      expect(state.level.n, 2);
-      expect(state.passed, 1);
+      expect(state.level.n, last.n + 1);
+      expect(state.level.band, 2);
+    });
+
+    test('new lessons stop once today\'s time or the coming reviews are full', () {
+      final state = open();
+      expect(state.dailyMinutes, 20);
+      expect(state.canLearnToday, isTrue);
+      state.finishLesson(state.nextLesson!);
+      expect(state.canLearnToday, isTrue);
+      state.finishLesson(state.nextLesson!);
+      expect(state.canLearnToday, isFalse, reason: 'two lessons fill 20 minutes');
+      state.setDailyMinutes(40);
+      expect(state.canLearnToday, isTrue);
+      expect(open().dailyMinutes, 40);
+
+      // A big pile of young cards: tomorrow still says no.
+      for (var i = 0; i < 400; i++) {
+        state.rate('wr:${course.words.keys.elementAt(i)}', Rating.good, isReview: false);
+      }
+      now = now.add(const Duration(days: 1));
+      state.openDay();
+      expect(state.minutesToday, 0);
+      expect(state.canLearnToday, isFalse);
+    });
+
+    test('reading coverage counts only words held in memory', () {
+      final state = open();
+      expect(state.readingCoverage, 0);
+      runAll(Session.forLesson(state, state.nextLesson!));
+      expect(state.readingCoverage, 0, reason: 'just learned, not yet held');
+      reviewFor(state, 6);
+      expect(state.readingCoverage, greaterThan(0));
+      expect(state.readingCoverage, lessThan(1));
     });
 
     test('exam sentences aren\'t reused as distractor-free giveaways', () {

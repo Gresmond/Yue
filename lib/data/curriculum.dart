@@ -9,10 +9,18 @@ class Word {
       py = j['py'],
       en = j['en'],
       band = j['band'],
+      taiwan = j['tw'],
+      share = (j['share'] as num).toDouble(),
       senses = (j['gl'] as List).cast<String>(),
       examples = (j['ex'] as List).cast<String>();
   final String w, py, en;
   final int band;
+
+  /// The word usually said in Taiwan, where it isn't this one.
+  final String? taiwan;
+
+  /// Its share of all the running words in the sentence library.
+  final double share;
   final List<String> senses, examples;
 }
 
@@ -44,11 +52,18 @@ class Sentence {
       en = j['en'],
       toks = (j['toks'] as List).cast<String>(),
       level = j['lvl'],
-      exam = j['exam'];
+      exam = j['exam'],
+      ai = j['ai'] ?? false;
   final String id, zh, en;
   final List<String> toks;
   final int level;
   final bool exam;
+
+  /// Written by AI, not a person. Labelled wherever it's shown, and never tested.
+  final bool ai;
+
+  /// The English to show, saying so if AI wrote the sentence.
+  String get shownEn => ai ? '$en  ·  AI-written' : en;
 }
 
 class Grammar {
@@ -65,11 +80,10 @@ class Grammar {
 class Lesson {
   Lesson(this.level, this.index, Map<String, dynamic> j)
     : words = (j['words'] as List).cast<String>(),
-      radicals = ((j['rad'] ?? const []) as List).cast<String>(),
       grammar = ((j['grammar'] ?? const []) as List).cast<String>(),
       sentences = (j['sent'] as List).cast<String>();
   final int level, index;
-  final List<String> words, radicals, grammar, sentences;
+  final List<String> words, grammar, sentences;
   String get id => '$level.$index';
 }
 
@@ -78,11 +92,10 @@ class Level {
     : n = j['n'],
       band = j['band'],
       exam = (j['exam'] as List).cast<String>(),
-      readable = j['readable'],
       lessons = [
         for (final (i, l) in (j['lessons'] as List).indexed) Lesson(j['n'], i, l),
       ];
-  final int n, band, readable;
+  final int n, band;
   final List<String> exam;
   final List<Lesson> lessons;
 }
@@ -114,12 +127,12 @@ class Curriculum {
       chars = {for (final c in (j['chars'] as Map).values) c['c'] as String: CharInfo(c)},
       radicals = {for (final r in j['radicals']) r['r'] as String: Radical(r)},
       names = (j['names'] as Map).cast<String, String>(),
+      renamed = ((j['renamed'] ?? const {}) as Map).cast<String, String>(),
       sentences = {for (final s in j['sentences']) s['id'] as String: Sentence(s)},
       grammar = {for (final g in j['grammar']) g['id'] as String: Grammar(g)},
       levels = [for (final l in j['levels']) Level(l)],
       passages = [for (final p in j['passages']) Passage(p)],
-      page = (j['page'] as List).cast<String>(),
-      totalSentences = j['totalSentences'] {
+      page = (j['page'] as List).cast<String>() {
     for (final w in words.values) {
       (byPinyin[toneless(w.py)] ??= []).add(w);
       for (final c in w.w.split('')) {
@@ -139,14 +152,20 @@ class Curriculum {
   final Map<String, CharInfo> chars;
   final Map<String, Radical> radicals;
   final Map<String, String> names;
+
+  /// Words' Simplified spellings, from before the course was in Traditional, to
+  /// the spelling they have now.
+  final Map<String, String> renamed;
   final Map<String, Sentence> sentences;
   final Map<String, Grammar> grammar;
   final List<Level> levels;
   final List<Passage> passages;
   final List<String> page;
-  final int totalSentences;
   final Map<String, List<Word>> byPinyin = {}, byChar = {};
   final Map<String, int> wordLevel = {};
+
+  /// Whether [level] is the last of its band, where the band's exam sits.
+  bool isBandEnd(Level level) => level.n >= levels.length || levels[level.n].band != level.band;
 
   /// Bands for the road map: what each lets you do.
   static const bandGoals = {
