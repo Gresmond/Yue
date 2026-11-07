@@ -29,10 +29,10 @@ abstract final class Fonts {
 
   /// Chinese text, by the font chosen in the appearance menu.
   static String zh = zhKai;
-  static const zhKai = 'Yue Kai', zhSans = 'Yue Sans';
+  static const zhKai = 'Yue Kai', zhSans = 'Yue Sans', zhRare = 'Yue Rare';
 
   /// So Chinese inside English text is never left to the system's font.
-  static const zhFallback = [zhKai, zhSans];
+  static const zhFallback = [zhKai, zhSans, zhRare];
 }
 
 /// Every colour the app draws with. Each theme is one instance of this.

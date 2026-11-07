@@ -340,7 +340,7 @@ void main() {
     expect(fresh.themeName, 'Sunset');
   });
 
-  testWidgets('Appearance offers sign-in, fits a short window, and says when it can’t', (t) async {
+  testWidgets('Settings offers sign-in, fits a short window, and says when it can’t', (t) async {
     t.view.physicalSize = const Size(750, 500);
     t.view.devicePixelRatio = 1;
     addTearDown(t.view.reset);
@@ -351,7 +351,7 @@ void main() {
     final sync = SyncService.load(store, signIn: ({cancel}) async => throw const DriveError('Google sync is not set up in this build of Yue.'));
     await t.pumpWidget(YueApp(state: AppState(store, course, sync: sync)));
     await t.pumpAndSettle();
-    await t.tap(find.byTooltip('Appearance and sync'));
+    await t.tap(find.byTooltip('Settings and sync'));
     await t.pumpAndSettle();
     final button = find.text('Sign in with Google');
     await t.ensureVisible(button);

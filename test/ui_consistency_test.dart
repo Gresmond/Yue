@@ -45,11 +45,12 @@ void main() {
 
   test('colours fade their own colour, not transparent black', () {
     // A colour eased from Colors.transparent dips through a darker shade. A
-    // field's or button's hover colour, never eased to, is the one exception.
+    // field's or button's hover colour, and a menu's turned-off surface tint,
+    // are never eased to, so they're the exceptions.
     final bad = [
       for (final f in files)
         for (final line in f.readAsLinesSync())
-          if (line.contains('Colors.transparent') && !line.contains('overlayColor:') && !line.contains('hoverColor:')) '${f.path}  ${line.trim()}',
+          if (line.contains('Colors.transparent') && !line.contains('overlayColor:') && !line.contains('hoverColor:') && !line.contains('surfaceTintColor:')) '${f.path}  ${line.trim()}',
     ];
     expect(bad, isEmpty);
   });

@@ -56,13 +56,16 @@ flutter:
           weight: 600
     - family: Yue Kai
       fonts:
-        - asset: assets/fonts/chinese/WenKai.ttf
+        - asset: assets/fonts/chinese/WenKaiTC.ttf
           weight: 400
-        - asset: assets/fonts/chinese/WenKaiMedium.ttf
+        - asset: assets/fonts/chinese/WenKaiTCMedium.ttf
           weight: 600
     - family: Yue Sans
       fonts:
-        - asset: assets/fonts/chinese/NotoSansSC.ttf
+        - asset: assets/fonts/chinese/NotoSansTC.ttf
+    - family: Yue Rare
+      fonts:
+        - asset: assets/fonts/chinese/WenKaiRare.ttf
 
 # Linux builds use the system SQLite package; other platforms keep their native asset.
 hooks:

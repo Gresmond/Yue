@@ -2,9 +2,11 @@
 
 Learn to read and write Mandarin. Built on Eclipse's design system.
 
-- Course data: `python3 -I tool/build_curriculum.py` turns `data_src/` (downloads, not in git) and `content/` into `assets/curriculum.json.gz`.
-- Sources: HSK 3.0 word list, CC-CEDICT (CC BY-SA), Make Me a Hanzi, Tatoeba sentences by native speakers (CC BY), FSRS-6 weights from py-fsrs.
-- AI-written: `content/passages.json` (labelled in the app, never tested), `content/grammar.json` and `content/glosses.json`.
+- The course is in Traditional characters as written in Taiwan, teaching HSK vocabulary, with the usual Taiwan word noted where it differs (`content/taiwan_words.json`).
+- Course data, from a venv with `tool/requirements.txt`: `python -I tool/build_curriculum.py` turns `data_src/` (downloads, not in git) and `content/` into `assets/curriculum.json.gz`. Then `python -I tool/subset_fonts.py` cuts the fonts down to the characters it uses.
+- `content/lessons.json` fixes which words each lesson teaches, so lesson ids keep their meaning when the sentences change.
+- Sources: HSK 3.0 word list, CC-CEDICT (CC BY-SA), Make Me a Hanzi, Tatoeba sentences by native speakers (CC BY), OpenCC's conversion tables (Apache 2.0), FSRS-6 weights from py-fsrs. Noto Sans TC and LXGW WenKai TC, plus a few rare character parts from LXGW WenKai (all SIL Open Font License).
+- AI-written: `content/ai_sentences.tsv` (beginner example sentences, labelled in the app, never tested), `content/passages.json` (labelled in the app, never tested), `content/grammar.json`, `content/glosses.json`, `content/taiwan_words.json` and `content/char_fixes.json`.
 
 ## Google sync
 

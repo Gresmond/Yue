@@ -9,19 +9,30 @@ sealed class Step {
   const Step();
 }
 
-class TeachRadical extends Step {
-  const TeachRadical(this.radical);
-  final Radical radical;
-}
-
 class TeachWord extends Step {
-  const TeachWord(this.word);
+  const TeachWord(this.word, {this.example});
   final Word word;
+
+  /// A sentence whose every other word you already know, if there is one.
+  final Sentence? example;
 }
 
 class TeachGrammar extends Step {
   const TeachGrammar(this.grammar);
   final Grammar grammar;
+}
+
+/// Match characters to their meanings: every word here has been taught, so
+/// nothing on screen is unfamiliar. [fresh] are the words being checked for the
+/// first time; the others are there for company and aren't recorded.
+class MatchPairs extends Step {
+  MatchPairs(this.words, this.meanings, this.fresh);
+  final List<Word> words;
+  final List<String> meanings;
+  final Set<Word> fresh;
+
+  /// Fresh words that had a wrong match here, to be checked again later.
+  final missed = <Word>{};
 }
 
 /// A step with a right answer, recorded the first time it's tried.
@@ -30,22 +41,10 @@ sealed class Check extends Step {
   final String card;
 }
 
-/// See the Chinese, choose its meaning: just after a word is taught.
-class ChooseMeaning extends Check {
-  ChooseMeaning(this.word, this.options) : super('wr:${word.w}');
-  final Word word;
-  final List<String> options;
-}
-
 /// See the Chinese, recall the meaning, and say how it went.
 class RecallWord extends Check {
   RecallWord(this.word) : super('wr:${word.w}');
   final Word word;
-}
-
-class RecallRadical extends Check {
-  RecallRadical(this.radical) : super('rad:${radical.r}');
-  final Radical radical;
 }
 
 /// See the English, type the pinyin, then pick the characters.
@@ -76,10 +75,16 @@ class ExamRead extends Check {
 
 enum SessionKind { review, lesson, exam }
 
-/// A run of steps. A wrong answer sends the step round again later, but only the
-/// first try is recorded. Answers in an exam change no schedule.
+/// A run of steps. A wrong answer sends the step round again later, and only the
+/// first try counts towards the score. In a lesson, something joins your reviews
+/// once you've answered it correctly, as Hard if it took more than one try. A
+/// lesson done before is practice, and like an exam it changes no schedule.
 class Session {
-  Session._(this.state, this.kind, this.steps, {this.lesson, this.level}) : total = steps.length, litBefore = state.learnedChars.toSet(), startedAt = state.nowMs;
+  Session._(this.state, this.kind, this.steps, {this.lesson, this.level, this.practice = false})
+    : total = steps.length,
+      litBefore = state.learnedChars.toSet(),
+      startedAt = state.nowMs,
+      passedBefore = state.passed;
 
   final AppState state;
   final SessionKind kind;
@@ -87,12 +92,18 @@ class Session {
   final Lesson? lesson;
   final Level? level;
   final Set<String> litBefore;
-  final int startedAt;
+  final int startedAt, passedBefore;
+  final bool practice;
   int total, index = 0, right = 0, wrong = 0;
 
   /// Which steps have had their first try, and which of those were missed.
   final _tried = <Step>{};
   final missed = <Step>{};
+
+  /// Lesson steps now answered correctly, and words matched, with those that took
+  /// more than one try.
+  final _settled = <Step>{};
+  final _matchTried = <Word>{}, _matchMissed = <Word>{};
   int attempt = 0;
   bool finished = false;
 
@@ -109,10 +120,11 @@ class Session {
     if (first) {
       ok ? right++ : wrong++;
       if (!ok) missed.add(step);
-      if (kind != SessionKind.exam) {
-        // A word met for the first time is teaching, not a review.
-        state.rate(step.card, rating, takenMs: takenMs, isReview: kind == SessionKind.review);
-      }
+      if (kind == SessionKind.review) state.rate(step.card, rating, takenMs: takenMs);
+    }
+    if (kind == SessionKind.lesson && !practice && ok && _settled.add(step)) {
+      // A word met for the first time is teaching, not a review.
+      state.rate(step.card, missed.contains(step) ? Rating.hard : rating, takenMs: takenMs, isReview: false);
     }
     if (!ok && kind != SessionKind.exam) {
       final at = min(index + 4, steps.length);
@@ -121,8 +133,27 @@ class Session {
     }
   }
 
+  /// Records an attempt to match [word] in the current [MatchPairs].
+  void answerMatch(Word word, {required bool correct, int takenMs = 0}) {
+    final step = current;
+    if (step is! MatchPairs || !step.fresh.contains(word)) return;
+    if (_matchTried.add(word)) correct ? right++ : wrong++;
+    if (!correct) {
+      step.missed.add(word);
+      _matchMissed.add(word);
+    } else if (!step.missed.contains(word) && !practice) {
+      state.rate('wr:${word.w}', _matchMissed.contains(word) ? Rating.hard : Rating.good, takenMs: takenMs, isReview: false);
+    }
+  }
+
   void next() {
     attempt++;
+    // Anything missed in a match is checked again a little later.
+    if (current case final MatchPairs step when step.missed.isNotEmpty) {
+      final known = steps.take(index + 1).whereType<MatchPairs>().expand((s) => s.words).where((w) => !step.missed.contains(w)).toSet().toList();
+      steps.insert(min(index + 4, steps.length), _match(state, step.missed.toList(), known, Random()));
+      total++;
+    }
     if (index + 1 >= steps.length) {
       finished = true;
       if (lesson != null) state.finishLesson(lesson!);
@@ -153,7 +184,6 @@ class Session {
     final key = id.substring(id.indexOf(':') + 1);
     if (id.startsWith('wr:')) return switch (course.words[key]) { final w? => RecallWord(w), _ => null };
     if (id.startsWith('ww:')) return switch (course.words[key]) { final w? => WriteWord(w, writeOptions(course, w, random)), _ => null };
-    if (id.startsWith('rad:')) return switch (course.radicals[key]) { final r? => RecallRadical(r), _ => null };
     final s = course.sentences[key];
     if (s == null) return null;
     if (id.startsWith('sr:')) return ReadSentence(s);
@@ -164,22 +194,8 @@ class Session {
   static Session forLesson(AppState state, Lesson lesson) {
     final course = state.course;
     final random = Random();
-    final steps = <Step>[];
-    for (final r in lesson.radicals) {
-      if (course.radicals[r] case final radical?) {
-        steps.add(TeachRadical(radical));
-        steps.add(RecallRadical(radical));
-      }
-    }
     final words = [for (final w in lesson.words) ?course.words[w]];
-    // Three at a time: meet them, then choose each one's meaning.
-    for (var i = 0; i < words.length; i += 3) {
-      final group = words.sublist(i, min(i + 3, words.length));
-      steps.addAll(group.map(TeachWord.new));
-      steps.addAll(
-        (group.toList()..shuffle(random)).map((w) => ChooseMeaning(w, meaningOptions(state, w, random))),
-      );
-    }
+    final steps = _introduce(state, words, random);
     for (final g in lesson.grammar) {
       if (course.grammar[g] case final grammar?) steps.add(TeachGrammar(grammar));
     }
@@ -191,14 +207,78 @@ class Session {
     for (final s in sentences.where(_buildable).take(2)) {
       steps.add(BuildSentence(s, tilesFor(s, random)));
     }
-    return Session._(state, SessionKind.lesson, steps, lesson: lesson);
+    return Session._(state, SessionKind.lesson, steps, lesson: lesson, practice: state.lessonDone(lesson));
   }
 
-  /// Ten unseen sentences to read, four to build, six words to write.
+  /// Teaches [words] a few at a time, each followed by a match. The word taught
+  /// last is held back for the next match, so nothing is asked straight after
+  /// its own card, when answering would only need you to look back a second.
+  static List<Step> _introduce(AppState state, List<Word> words, Random random) {
+    const batch = 4;
+    final steps = <Step>[];
+    final taught = <String>{};
+    final waiting = <Word>[], met = <Word>[];
+    void check({Word? holding}) {
+      // Two words with one meaning can't be told apart in a match: the later
+      // one waits for the next.
+      final meanings = <String>{};
+      final fresh = waiting.where((w) => w != holding && meanings.add(w.en)).toList();
+      if (fresh.isEmpty) return;
+      steps.add(_match(state, fresh, met, random));
+      met.addAll(fresh);
+      waiting.removeWhere(fresh.contains);
+    }
+
+    for (final word in words) {
+      taught.add(word.w);
+      steps.add(TeachWord(word, example: _readableExample(state, word, taught)));
+      waiting.add(word);
+      if (waiting.length >= batch) check(holding: word);
+    }
+    if (words.isEmpty) return steps;
+    while (waiting.length > 1) {
+      check(holding: words.last);
+    }
+    // With nothing else to match, something familiar sits between the last card
+    // and its check.
+    if (steps.last is TeachWord) {
+      final company = _match(state, const [], met, random);
+      if (company.words.length > 1) steps.add(company);
+    }
+    check();
+    return steps;
+  }
+
+  /// [fresh] words with others you've met, three or so pairs in all, to match.
+  static MatchPairs _match(AppState state, List<Word> fresh, List<Word> met, Random random) {
+    const pairs = 3;
+    final earlier = [for (final w in state.learned) ?state.course.words[w]]..shuffle(random);
+    final words = fresh.toList();
+    for (final other in [...met.toList()..shuffle(random), ...earlier]) {
+      if (words.length >= pairs) break;
+      if (words.every((w) => w.en != other.en)) words.add(other);
+    }
+    words.shuffle(random);
+    return MatchPairs(words, words.map((w) => w.en).toList()..shuffle(random), fresh.toSet());
+  }
+
+  /// The first of [word]'s sentences with no word you haven't met, counting
+  /// what this lesson has [taught] so far. A name counts as met: it has a gloss.
+  static Sentence? _readableExample(AppState state, Word word, Set<String> taught) {
+    for (final id in word.examples) {
+      final s = state.course.sentences[id];
+      if (s != null && s.toks.every((t) => taught.contains(t) || state.isKnownToken(t))) return s;
+    }
+    return null;
+  }
+
+  /// Ten unseen sentences to read, four to build, six words to write, from all
+  /// of the band that [level] ends.
   static Session exam(AppState state, Level level) {
     final course = state.course;
     final random = Random();
-    final pool = [for (final id in level.exam) ?course.sentences[id]]..shuffle(random);
+    final band = course.levels.where((l) => l.band == level.band).toList();
+    final pool = [for (final id in band.expand((l) => l.exam).toSet()) ?course.sentences[id]]..shuffle(random);
     final steps = <Step>[];
     final translations = [for (final s in course.sentences.values) if (s.exam && s.level <= level.n) s.en];
     final reading = pool.take(10).toList();
@@ -211,7 +291,7 @@ class Session {
     for (final s in builds) {
       steps.add(BuildSentence(s, tilesFor(s, random)));
     }
-    final words = [for (final l in level.lessons) for (final w in l.words) ?course.words[w]]..shuffle(random);
+    final words = [for (final l in band) for (final lesson in l.lessons) for (final w in lesson.words) ?course.words[w]]..shuffle(random);
     for (final w in words.take(6)) {
       steps.add(WriteWord(w, writeOptions(course, w, random)));
     }
@@ -237,15 +317,6 @@ class Session {
   }
 
   static String buildAnswer(Sentence s) => _tileTokens(s).join();
-
-  static List<String> meaningOptions(AppState state, Word word, Random random) {
-    final course = state.course;
-    final pool = [
-      for (final other in course.words.values)
-        if (other.band == word.band && other.w != word.w && other.en != word.en) other.en,
-    ]..shuffle(random);
-    return [word.en, ...pool.take(3)]..shuffle(random);
-  }
 
   /// The right word among ones that sound the same or share a character,
   /// as on a real Chinese keyboard.

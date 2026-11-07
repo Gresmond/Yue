@@ -6,6 +6,7 @@ import '../theme/pixels.dart';
 import '../theme/tokens.dart';
 import '../widgets/common.dart';
 import '../widgets/fade_through.dart';
+import '../widgets/feedback.dart';
 import '../widgets/hover_fill.dart';
 import '../widgets/smooth_task_scroll.dart';
 import '../widgets/tile.dart';
@@ -35,7 +36,7 @@ class _ReadPageState extends State<ReadPage> {
     final course = state.course;
     final sentences = [
       for (final s in course.sentences.values)
-        if (s.level == level && !s.exam && s.zh.length >= 6) s,
+        if (s.level == level && !s.exam && !s.ai && s.zh.length >= 6) s,
     ]..sort((a, b) => a.id.compareTo(b.id));
     final chosen = sentences.take(8);
     return _Text(
@@ -191,7 +192,10 @@ class _ReaderState extends State<_Reader> {
                 Divider(height: 1, color: p.borderSoft),
                 const SizedBox(height: 12),
                 GlossLine(token: _selected == null ? null : t.toks[_selected!], extra: t.extra),
-                if (_translation) ...[const SizedBox(height: 12), Text(t.en, style: bodyStyle(p.inkMuted))],
+                Unfold(
+                  open: _translation,
+                  builder: (context) => Padding(padding: const EdgeInsets.only(top: 12), child: Text(t.en, style: bodyStyle(p.inkMuted))),
+                ),
                 const SizedBox(height: 16),
                 Wrap(
                   spacing: 12,

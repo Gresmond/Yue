@@ -18,7 +18,7 @@ class ProgressPage extends StatelessWidget {
     final p = context.palette;
     final state = AppScope.of(context);
     final style = displayStyle(38, p.ink);
-    final strong = state.cards.entries.where((e) => e.key.startsWith('wr:') && e.value.strong).length;
+    final held = state.cards.entries.where((e) => e.key.startsWith('wr:') && e.value.held).length;
     return SmoothTaskScroll(builder: (context, controller) => ListView(
       controller: controller,
       padding: const EdgeInsets.fromLTRB(32, 4, 32, 32),
@@ -29,8 +29,8 @@ class ProgressPage extends StatelessWidget {
             runSpacing: 24,
             children: [
               Stat(value: RollingNumber(value: state.learnedChars.length, style: style), label: 'Characters', note: '${(state.characterCoverage * 100).round()}% of the library’s text'),
-              Stat(value: RollingNumber(value: state.learned.length, style: style), label: 'Words', note: '$strong held strongly'),
-              Stat(value: RollingNumber(value: state.readableSentences, style: style), label: 'Readable sentences', note: 'of ${state.course.totalSentences}'),
+              Stat(value: RollingNumber(value: state.learned.length, style: style), label: 'Words', note: '$held held in memory'),
+              Stat(value: Text('${(state.readingCoverage * 100).round()}%', style: style), label: 'Reading coverage', note: 'of the words in real sentences'),
               Stat(value: RollingNumber(value: state.streak, style: style), label: 'Day streak', note: 'Best ${state.best}'),
               Stat(value: RollingNumber(value: state.passed, style: style), label: 'Levels passed', note: 'of ${state.course.levels.length}'),
             ],

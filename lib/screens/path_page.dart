@@ -7,7 +7,7 @@ import '../theme/app_theme.dart';
 import '../theme/pixels.dart';
 import '../theme/tokens.dart';
 import '../widgets/common.dart';
-import '../widgets/hover_fill.dart';
+import '../widgets/feedback.dart';
 import '../widgets/smooth_task_scroll.dart';
 import '../widgets/tile.dart';
 
@@ -104,7 +104,7 @@ class _LevelRow extends StatelessWidget {
     final state = AppScope.of(context);
     final passed = level.n <= state.passed;
     final current = level.n == state.level.n && !passed;
-    final doneAll = state.doneInLevel(level) == level.lessons.length;
+    final bandEnd = state.course.isBandEnd(level);
     return PixelRow(
       children: [
         SizedBox(
@@ -128,10 +128,12 @@ class _LevelRow extends StatelessWidget {
         const SizedBox(width: 12),
         if (passed)
           const CapsChip('Passed')
-        else if (current && doneAll)
+        else if (current && state.examReady)
           PillButton(label: 'Take exam', primary: true, onTap: () => onStart(Session.exam(state, level)))
-        else
-          Text('${level.readable} sentences', style: bodyStyle(p.inkMuted, size: 12)),
+        else if (current)
+          Text('${state.heldInLevel(level)} of ${state.heldNeeded(level)} held', style: bodyStyle(p.inkMuted, size: 12))
+        else if (bandEnd)
+          Text('Band exam', style: bodyStyle(p.inkMuted, size: 12)),
       ],
     );
   }
@@ -150,7 +152,7 @@ class _LessonDot extends StatelessWidget {
     final p = context.palette;
     return PixelTooltip(
       message: lesson.words.join('  '),
-      child: Hoverable(
+      child: Pressable(
         onTap: onTap,
         builder: (hover) => AnimatedContainer(
           duration: context.themed(Motion.hover),

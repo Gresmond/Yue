@@ -20,6 +20,9 @@ class Memory {
   final double difficulty;
   final int lastMs, dueMs, reps, lapses;
 
+  /// It has come through at least one spaced review: a level's words must be
+  /// held for the level to clear.
+  bool get held => stability >= 7;
   bool get strong => stability >= 21;
 }
 

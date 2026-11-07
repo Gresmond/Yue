@@ -36,7 +36,7 @@ class _WarmUpState extends State<WarmUp> {
     (_) => const ReadPage(),
     (_) => const WordsPage(),
     (_) => const ProgressPage(),
-    (_) => const AppearanceDialog(),
+    (_) => const SettingsDialog(),
   ];
   var _next = 0;
   WidgetBuilder? _building;

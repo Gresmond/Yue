@@ -18,6 +18,9 @@ class Store {
   final Database _db;
   final String folder;
 
+  /// Words' old spellings to their current ones, from the course.
+  Map<String, String> renamedWords = const {};
+
   static const _schema = 2;
 
   static Store open(String folder) {

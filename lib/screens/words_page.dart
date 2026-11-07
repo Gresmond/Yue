@@ -7,6 +7,7 @@ import '../theme/app_theme.dart';
 import '../theme/pixels.dart';
 import '../theme/tokens.dart';
 import '../widgets/common.dart';
+import '../widgets/feedback.dart';
 import '../widgets/hover_fill.dart';
 import '../widgets/smooth_task_scroll.dart';
 
@@ -121,18 +122,29 @@ class _WordRow extends StatelessWidget {
                 SizedBox(width: 72, child: recall == null ? Text('Level ${state.course.wordLevel[word.w] ?? ''}', textAlign: TextAlign.end, style: bodyStyle(p.inkMuted, size: 12)) : ProgressTrack(value: recall, height: 4)),
               ],
             ),
-            if (open) ...[
-              const SizedBox(height: 12),
-              Text(word.senses.join('  ·  '), style: bodyStyle(p.inkMuted, size: 14)),
-              const SizedBox(height: 12),
-              WordBreakdown(word: word),
-              for (final s in word.examples.map((id) => state.course.sentences[id]).nonNulls.take(2)) ...[
-                const SizedBox(height: 12),
-                Text(s.zh, style: zhStyle(18, p.ink)),
-                Text(s.en, style: bodyStyle(p.inkMuted, size: 14)),
-              ],
-              const SizedBox(height: 4),
-            ],
+            Unfold(
+              open: open,
+              builder: (context) => PixelColumn(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: 12),
+                  Text(word.senses.join('  ·  '), style: bodyStyle(p.inkMuted, size: 14)),
+                  if (word.taiwan case final taiwan?) ...[
+                    const SizedBox(height: 4),
+                    Text('In Taiwan: $taiwan', style: bodyStyle(p.inkMuted, size: 14)),
+                  ],
+                  const SizedBox(height: 12),
+                  WordBreakdown(word: word),
+                  for (final s in word.examples.map((id) => state.course.sentences[id]).nonNulls.take(2)) ...[
+                    const SizedBox(height: 12),
+                    Text(s.zh, style: zhStyle(18, p.ink)),
+                    Text(s.shownEn, style: bodyStyle(p.inkMuted, size: 14)),
+                  ],
+                  const SizedBox(height: 4),
+                ],
+              ),
+            ),
           ],
         ),
       ),

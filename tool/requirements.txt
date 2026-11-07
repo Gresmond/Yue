@@ -1,0 +1,3 @@
+# For build_curriculum.py and subset_fonts.py.
+opencc-python-reimplemented==0.1.7
+fonttools==4.68.0

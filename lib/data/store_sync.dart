@@ -1,7 +1,7 @@
 part of 'store.dart';
 
 /// Settings that follow you between devices. The others stay on this one.
-const _syncedMeta = {'theme', 'zh_font', 'freezes', 'best_streak'};
+const _syncedMeta = {'theme', 'zh_font', 'freezes', 'best_streak', 'daily_minutes'};
 
 /// What sync needs of the store. Each device writes only its own change files,
 /// one per day, so no file is ever written in two places:
@@ -29,9 +29,7 @@ extension StoreSync on Store {
 
   /// The days with changes to send, each with a count that moves on when it
   /// changes again.
-  List<(String, int)> unsentDays() => [
-    for (final r in _db.select('SELECT date, n FROM sync_dirty ORDER BY date')) (r['date'] as String, r['n'] as int),
-  ];
+  List<(String, int)> unsentDays() => [for (final r in _db.select('SELECT date, n FROM sync_dirty ORDER BY date')) (r['date'] as String, r['n'] as int)];
 
   /// [date]'s file went up as it was at [n].
   void markSent(String date, int n) => _db.execute('DELETE FROM sync_dirty WHERE date = ? AND n = ?', [date, n]);
@@ -65,6 +63,33 @@ extension StoreSync on Store {
     _db.execute("DELETE FROM meta WHERE key = 'sync_machine'");
   });
 
+  /// A card's id as it is now: progress from before the course was in
+  /// Traditional, here or on a device yet to update, is still that word's.
+  String _currentCard(String id) {
+    final renamedTo = id.startsWith('wr:') || id.startsWith('ww:') ? renamedWords[id.substring(3)] : null;
+    return renamedTo == null ? id : '${id.substring(0, 3)}$renamedTo';
+  }
+
+  /// Moves any cards still under a word's old spelling to the new one.
+  void renameOldCards() {
+    final moved = <String>{};
+    _transaction(() {
+      final held = {
+        for (final r in _db.select("SELECT card id FROM reviews WHERE card LIKE 'w_:%' UNION SELECT card FROM dues WHERE card LIKE 'w_:%' UNION SELECT id FROM cards WHERE id LIKE 'w_:%'"))
+          r['id'] as String,
+      };
+      for (final id in held) {
+        final now = _currentCard(id);
+        if (now == id) continue;
+        _db.execute('UPDATE reviews SET card = ? WHERE card = ?', [now, id]);
+        _db.execute('UPDATE dues SET card = ? WHERE card = ?', [now, id]);
+        _db.execute('DELETE FROM cards WHERE id = ?', [id]);
+        moved.add(now);
+      }
+    });
+    replay(moved);
+  }
+
   /// [date]'s change file: what this device itself did.
   String changeFile(String date, String name) {
     final day = DateTime.parse('${date}T00:00:00Z').millisecondsSinceEpoch;
@@ -81,14 +106,7 @@ extension StoreSync on Store {
       'exams': rows('SELECT level, at_ms, score, passed FROM exams WHERE origin IS NULL AND at_ms >= ? AND at_ms < ?', args),
       'reads': rows('SELECT id, at_ms FROM reads WHERE origin IS NULL AND at_ms >= ? AND at_ms < ?', args),
       'meta': rows('SELECT key, value, ts FROM sync_meta WHERE origin IS NULL AND ts >= ? AND ts < ?', args),
-      if (row != null)
-        'day': [
-          row['target'],
-          math.max(0, (row['reviews'] as int) - (others['r'] as int)),
-          math.max(0, (row['lessons'] as int) - (others['l'] as int)),
-          row['complete'],
-          row['frozen'],
-        ],
+      if (row != null) 'day': [row['target'], math.max(0, (row['reviews'] as int) - (others['r'] as int)), math.max(0, (row['lessons'] as int) - (others['l'] as int)), row['complete'], row['frozen']],
     });
   }
 
@@ -107,17 +125,22 @@ extension StoreSync on Store {
     }
 
     for (final r in json['reviews'] as List? ?? const []) {
-      final [String card, int at, int rating, int taken] = r as List<dynamic>;
+      final [String old, int at, int rating, int taken] = r as List<dynamic>;
+      final card = _currentCard(old);
       if (!Rating.values.any((v) => v.value == rating)) throw FormatException('Not a rating: $rating');
-      if (insert(
-        'INSERT INTO reviews(card, at_ms, rating, taken_ms, origin) SELECT ?1, ?2, ?3, ?4, ?5 WHERE NOT EXISTS (SELECT 1 FROM reviews WHERE card = ?1 AND at_ms = ?2)',
-        [card, at, rating, taken, who],
-      )) {
+      if (insert('INSERT INTO reviews(card, at_ms, rating, taken_ms, origin) SELECT ?1, ?2, ?3, ?4, ?5 WHERE NOT EXISTS (SELECT 1 FROM reviews WHERE card = ?1 AND at_ms = ?2)', [
+        card,
+        at,
+        rating,
+        taken,
+        who,
+      ])) {
         touched.add(card);
       }
     }
     for (final r in json['dues'] as List? ?? const []) {
-      final [String card, int at] = r as List<dynamic>;
+      final [String old, int at] = r as List<dynamic>;
+      final card = _currentCard(old);
       if (insert('INSERT INTO dues(card, at_ms, origin) SELECT ?1, ?2, ?3 WHERE NOT EXISTS (SELECT 1 FROM dues WHERE card = ?1 AND at_ms = ?2)', [card, at, who])) touched.add(card);
     }
     for (final r in json['lessons'] as List? ?? const []) {
@@ -131,10 +154,13 @@ extension StoreSync on Store {
     for (final r in json['exams'] as List? ?? const []) {
       final e = r as List;
       final (level, at, score, passed) = (e[0] as int, e[1] as int, (e[2] as num).toDouble(), e[3] as int);
-      insert(
-        'INSERT INTO exams(level, at_ms, score, passed, origin) SELECT ?1, ?2, ?3, ?4, ?5 WHERE NOT EXISTS (SELECT 1 FROM exams WHERE level = ?1 AND at_ms = ?2)',
-        [level, at, score, passed, who],
-      );
+      insert('INSERT INTO exams(level, at_ms, score, passed, origin) SELECT ?1, ?2, ?3, ?4, ?5 WHERE NOT EXISTS (SELECT 1 FROM exams WHERE level = ?1 AND at_ms = ?2)', [
+        level,
+        at,
+        score,
+        passed,
+        who,
+      ]);
     }
     for (final r in json['meta'] as List? ?? const []) {
       final [String key, String value, int ts] = r as List<dynamic>;
@@ -186,10 +212,7 @@ extension StoreSync on Store {
   /// reaches the same answer whichever order it heard things in.
   void replay(Iterable<String> ids) => _transaction(() {
     for (final id in ids) {
-      final events = _db.select(
-        'SELECT at_ms, rating, 0 kind FROM reviews WHERE card = ?1 UNION ALL SELECT at_ms, NULL, 1 kind FROM dues WHERE card = ?1 ORDER BY at_ms, kind',
-        [id],
-      );
+      final events = _db.select('SELECT at_ms, rating, 0 kind FROM reviews WHERE card = ?1 UNION ALL SELECT at_ms, NULL, 1 kind FROM dues WHERE card = ?1 ORDER BY at_ms, kind', [id]);
       Memory? m;
       for (final e in events) {
         final at = e['at_ms'] as int;

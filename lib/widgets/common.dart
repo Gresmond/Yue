@@ -5,12 +5,14 @@ import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../theme/pixels.dart';
 import '../theme/tokens.dart';
+import 'fade_through.dart';
 import 'hover_fill.dart';
 import 'smooth_gradient.dart';
 
 /// Chinese text in the chosen font. The sans font is variable, so it's told its weight.
 TextStyle zhStyle(double size, Color color, {FontWeight weight = FontWeight.w400, double height = 1.35}) => TextStyle(
   fontFamily: Fonts.zh,
+  fontFamilyFallback: Fonts.zhFallback,
   fontSize: size,
   fontWeight: weight,
   height: height,
@@ -206,15 +208,20 @@ class GlossLine extends StatelessWidget {
         : other ?? ('', t == null ? 'Tap a word for its meaning.' : '');
     return ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 28),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Text.rich(
-          TextSpan(
-            children: [
-              if (t != null) TextSpan(text: '$t  ', style: zhStyle(18, p.ink)),
-              if (py.isNotEmpty) TextSpan(text: '$py  ', style: bodyStyle(p.accent, weight: FontWeight.w600)),
-              TextSpan(text: en, style: bodyStyle(t == null ? p.inkMuted : p.ink)),
-            ],
+      child: FadeThrough(
+        duration: Motion.morph,
+        layoutBuilder: FadeThrough.aligned(Alignment.centerLeft),
+        child: Align(
+          key: ValueKey(t),
+          alignment: Alignment.centerLeft,
+          child: Text.rich(
+            TextSpan(
+              children: [
+                if (t != null) TextSpan(text: '$t  ', style: zhStyle(18, p.ink)),
+                if (py.isNotEmpty) TextSpan(text: '$py  ', style: bodyStyle(p.accent, weight: FontWeight.w600)),
+                TextSpan(text: en, style: bodyStyle(t == null ? p.inkMuted : p.ink)),
+              ],
+            ),
           ),
         ),
       ),

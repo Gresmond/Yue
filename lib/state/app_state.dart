@@ -8,16 +8,28 @@ import '../data/store.dart';
 import '../data/sync_service.dart';
 import '../theme/app_theme.dart';
 
-/// Card ids: `wr:` reading a word, `ww:` writing one, `rad:` a radical,
-/// `sr:` reading a sentence, `sb:` building one.
+/// Card ids: `wr:` reading a word, `ww:` writing one, `sr:` reading a sentence,
+/// `sb:` building one. Older data may hold `rad:` cards for radicals, which are
+/// now explained on word cards and no longer reviewed, and cards for sentences
+/// the course has since dropped. Their history stays, but they never come due.
 class AppState extends ChangeNotifier {
   AppState(this.store, this.course, {this.sync}) {
+    store
+      ..renamedWords = course.renamed
+      ..renameOldCards();
     _load();
     openDay();
   }
 
+  bool _inCourse(String id) {
+    final key = id.substring(id.indexOf(':') + 1);
+    if (id.startsWith('wr:') || id.startsWith('ww:')) return course.words.containsKey(key);
+    if (id.startsWith('sr:') || id.startsWith('sb:')) return course.sentences.containsKey(key);
+    return false;
+  }
+
   void _load() {
-    cards = store.cards();
+    cards = store.cards()..removeWhere((id, _) => !_inCourse(id));
     _lessons = store.lessonsDone();
     _passed = store.levelsPassed();
     _reads = store.reads();
@@ -26,7 +38,9 @@ class AppState extends ChangeNotifier {
     Fonts.zh = store.meta('zh_font') ?? Fonts.zhKai;
     best = int.tryParse(store.meta('best_streak') ?? '') ?? 0;
     freezes = int.tryParse(store.meta('freezes') ?? '') ?? 0;
+    dailyMinutes = int.tryParse(store.meta('daily_minutes') ?? '') ?? 20;
     _recount();
+    _clearLevels();
   }
 
   /// Takes in what came from another device.
@@ -47,7 +61,7 @@ class AppState extends ChangeNotifier {
   late int _passed;
   late Map<String, DayRow> days;
   late String themeName;
-  int best = 0, freezes = 0;
+  int best = 0, freezes = 0, dailyMinutes = 20;
 
   /// What's learned, kept up to date as cards are first reviewed.
   final Set<String> learned = {}, learnedChars = {};
@@ -176,6 +190,7 @@ class AppState extends ChangeNotifier {
       store.saveDay(d);
     }
     _maybeCompleteDay();
+    _clearLevels();
     notifyListeners();
   }
 
@@ -197,9 +212,30 @@ class AppState extends ChangeNotifier {
   }
 
   int doneInLevel(Level l) => l.lessons.where(lessonDone).length;
-  double levelProgress(Level l) => l.lessons.isEmpty ? 0 : doneInLevel(l) / l.lessons.length;
+
+  /// A level's words, and how many must be held for it to clear.
+  int wordsInLevel(Level l) => l.lessons.fold(0, (sum, lesson) => sum + lesson.words.length);
+  int heldNeeded(Level l) => (wordsInLevel(l) * holdShare).ceil();
+  int heldInLevel(Level l) => l.lessons.expand((lesson) => lesson.words).where(isHeld).length;
+
+  /// Every lesson done and enough of its words held: what a level asks of you.
+  bool levelReady(Level l) => doneInLevel(l) == l.lessons.length && heldInLevel(l) >= heldNeeded(l);
+
+  /// The last level of a band is ready, so all that's left is the band's exam.
+  bool get examReady => !finishedCourse && course.isBandEnd(level) && levelReady(level);
+
+  /// Moves past levels that are ready, except where a band's exam stands in the
+  /// way. A level stays cleared even if some of its words later slip. Clearing
+  /// is stored as a passed exam, so it reaches other devices in the same way.
+  void _clearLevels() {
+    while (!finishedCourse && !course.isBandEnd(level) && levelReady(level)) {
+      store.saveExam(level.n, nowMs, 1, true);
+      _passed = level.n;
+    }
+  }
 
   void finishLesson(Lesson l) {
+    if (lessonDone(l)) return;
     store.finishLesson(l.id, nowMs);
     _lessons.add(l.id);
     final d = today;
@@ -207,6 +243,7 @@ class AppState extends ChangeNotifier {
     days[d.date] = d;
     store.saveDay(d);
     _maybeCompleteDay();
+    _clearLevels();
     notifyListeners();
   }
 
@@ -224,16 +261,47 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  static const passMark = 0.8;
+  static const passMark = 0.8, holdShare = 0.9;
+
+  // ---- How much to take on.
+
+  /// Rough costs: these only decide what to suggest, so they needn't be exact.
+  static const lessonMinutes = 10, secondsPerReview = 12;
+
+  /// The reviews a day your cards will ask for from here, each coming round
+  /// about once per its interval.
+  double get _reviewsPerDay => cards.values.fold(0.0, (sum, m) => sum + 1 / Fsrs.interval(m.stability));
+
+  /// A lesson's words each bring a reading and a writing card, plus a few
+  /// sentences, all starting on short intervals.
+  double _lessonLoad(Lesson l) => (l.words.length * 2 + math.min(l.sentences.length * 1.5, 6)) / Fsrs.interval(Fsrs.w[Rating.good.value - 1]);
+
+  /// Today's time so far.
+  double get minutesToday => today.lessons * lessonMinutes + today.reviews * secondsPerReview / 60;
+
+  /// Whether to suggest another new lesson: there's time left today, and the
+  /// reviews it adds would still leave room for new words in the days ahead.
+  bool get canLearnToday {
+    final l = nextLesson;
+    if (l == null || minutesToday >= dailyMinutes) return false;
+    return (_reviewsPerDay + _lessonLoad(l)) * secondsPerReview / 60 <= dailyMinutes * 0.6;
+  }
+
+  void setDailyMinutes(int minutes) {
+    dailyMinutes = minutes;
+    store.setMeta('daily_minutes', '$minutes');
+    notifyListeners();
+  }
 
   // ---- What you can do now.
 
-  /// Share of the sentence library you could read word for word.
-  int get readableSentences => _readableInProgress;
-  int get _readableInProgress {
-    final l = level;
-    final before = l.n > 1 ? course.levels[l.n - 2].readable : 0;
-    return before + ((l.readable - before) * levelProgress(l)).round();
+  /// Share of the running words in real sentences that you hold in memory.
+  double get readingCoverage {
+    var total = 0.0;
+    for (final w in course.words.values) {
+      if (isHeld(w.w)) total += w.share;
+    }
+    return total.clamp(0.0, 1.0);
   }
 
   /// Share of the characters in the sentence library that you've met.
@@ -245,16 +313,21 @@ class AppState extends ChangeNotifier {
     return total.clamp(0.0, 1.0);
   }
 
+  bool isHeld(String word) => cards['wr:$word']?.held ?? false;
   bool isStrong(String word) => cards['wr:$word']?.strong ?? false;
   bool charStrong(String c) => (course.byChar[c] ?? const <Word>[]).any((w) => isStrong(w.w));
 
   /// How many days until you're through [band]'s words at your recent pace, if known.
   int? daysToBandEnd(int band) {
-    final since = dayOf(now).subtract(const Duration(days: 14));
+    final today = dayOf(now);
+    final since = today.subtract(const Duration(days: 14));
+    final window = days.values.map((d) => DateTime.parse(d.date)).where((d) => d.isAfter(since)).toList();
     final recent = days.values.where((d) => DateTime.parse(d.date).isAfter(since)).fold(0, (sum, d) => sum + d.lessons);
     if (recent == 0) return null;
+    // Your pace over the days you've had, up to the last fortnight.
+    final span = window.fold(1, (most, d) => math.max(most, today.difference(d).inDays + 1));
     final remaining = course.levels.where((l) => l.band == band).expand((l) => l.lessons).where((l) => !lessonDone(l)).length;
-    return (remaining / (recent / 14)).ceil();
+    return (remaining / (recent / span)).ceil();
   }
 
   // ---- Reading.
@@ -282,7 +355,7 @@ class AppState extends ChangeNotifier {
   Sentence? get sentenceOfTheDay {
     final ready = [
       for (final s in course.sentences.values)
-        if (!s.exam && s.zh.length >= 6 && s.toks.every((t) => isKnownToken(t))) s,
+        if (!s.exam && !s.ai && s.zh.length >= 6 && s.toks.every((t) => isKnownToken(t))) s,
     ];
     if (ready.isEmpty) return null;
     ready.sort((a, b) => a.id.compareTo(b.id));
@@ -299,6 +372,9 @@ class AppState extends ChangeNotifier {
     store.setMeta('theme', name);
     notifyListeners();
   }
+
+  /// When the next card comes due, if none is due now.
+  int? get nextDueMs => cards.isEmpty ? null : cards.values.map((m) => m.dueMs).reduce(math.min);
 
   void setChineseFont(String font) {
     Fonts.zh = font;
