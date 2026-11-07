@@ -7,6 +7,7 @@ import '../theme/pixels.dart';
 import '../widgets/common.dart';
 import '../widgets/rolling_number.dart';
 import '../widgets/the_page.dart';
+import '../widgets/smooth_task_scroll.dart';
 import '../widgets/tile.dart';
 
 class ProgressPage extends StatelessWidget {
@@ -18,7 +19,8 @@ class ProgressPage extends StatelessWidget {
     final state = AppScope.of(context);
     final style = displayStyle(38, p.ink);
     final strong = state.cards.entries.where((e) => e.key.startsWith('wr:') && e.value.strong).length;
-    return ListView(
+    return SmoothTaskScroll(builder: (context, controller) => ListView(
+      controller: controller,
       padding: const EdgeInsets.fromLTRB(32, 4, 32, 32),
       children: [
         Tile(
@@ -51,7 +53,7 @@ class ProgressPage extends StatelessWidget {
           ),
         ),
       ],
-    );
+    ));
   }
 }
 

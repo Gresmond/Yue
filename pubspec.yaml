@@ -12,6 +12,7 @@ dependencies:
   sqlite3: ^3.8.0
   path_provider: ^2.1.6
   path: ^1.9.1
+  crypto: ^3.0.7
 
 dev_dependencies:
   flutter_test:

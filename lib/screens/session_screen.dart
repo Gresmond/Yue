@@ -470,14 +470,14 @@ class _OptionRow extends StatelessWidget {
     return Hoverable(
       onTap: state == _OptionState.open ? onTap : null,
       builder: (hover) => AnimatedContainer(
-        duration: context.themed(Motion.click),
+        duration: context.themed(state == _OptionState.open ? Motion.hover : Motion.click),
         curve: Motion.clickCurve,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: switch (state) {
             _OptionState.right => Color.lerp(p.tile, p.done, 0.35),
             _OptionState.wrong => Color.lerp(p.tile, p.missed, 0.35),
-            _ => hover ? p.empty : Colors.transparent,
+            _ => hover ? p.empty : p.empty.withValues(alpha: 0),
           },
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: p.border),
@@ -735,6 +735,7 @@ class _WriteViewState extends State<_WriteView> with _Timed {
                 hintStyle: bodyStyle(p.inkMuted, size: 15),
                 filled: true,
                 fillColor: p.empty.withValues(alpha: 0.5),
+                hoverColor: Colors.transparent,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: _shake ? p.missed : p.border)),
                 focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: _shake ? p.missed : p.accent, width: 2)),
@@ -789,7 +790,7 @@ class _CharacterChoice extends StatelessWidget {
     return Hoverable(
       onTap: onTap,
       builder: (hover) => AnimatedContainer(
-        duration: context.themed(Motion.click),
+        duration: context.themed(right || wrong ? Motion.click : Motion.hover),
         curve: Motion.clickCurve,
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
         decoration: BoxDecoration(
@@ -799,7 +800,7 @@ class _CharacterChoice extends StatelessWidget {
               ? Color.lerp(p.tile, p.missed, 0.35)
               : hover
               ? p.empty
-              : Colors.transparent,
+              : p.empty.withValues(alpha: 0),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: p.border),
         ),

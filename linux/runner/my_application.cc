@@ -27,8 +27,12 @@ static void my_application_activate(GApplication* application) {
   gtk_window_set_decorated(window, FALSE);
 
   gtk_window_set_default_size(window, 1240, 860);
+  gtk_widget_set_size_request(GTK_WIDGET(window), 750, 500);
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
+  // Impeller's text is far sharper than Skia's. It leaves gradient fills and
+  // stroked paths jagged here, so SmoothGradientDecoration and paintMark avoid them.
+  fl_dart_project_set_enable_impeller(project, TRUE);
   fl_dart_project_set_dart_entrypoint_arguments(
       project, self->dart_entrypoint_arguments);
 

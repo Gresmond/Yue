@@ -32,7 +32,7 @@ class HeaderIconButton extends StatelessWidget {
           shape: const WidgetStatePropertyAll(CircleBorder()),
           foregroundColor: WidgetStatePropertyAll(p.inkMuted.withValues(alpha: 0.8)),
           backgroundColor: WidgetStateProperty.resolveWith(
-            (states) => states.contains(WidgetState.hovered) ? p.empty.withValues(alpha: 0.8) : Colors.transparent,
+            (states) => states.contains(WidgetState.hovered) ? p.empty.withValues(alpha: 0.8) : p.empty.withValues(alpha: 0),
           ),
           overlayColor: const WidgetStatePropertyAll(Colors.transparent),
         ),

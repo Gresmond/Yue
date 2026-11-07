@@ -7,6 +7,7 @@ import '../theme/pixels.dart';
 import '../theme/tokens.dart';
 import '../widgets/common.dart';
 import '../widgets/the_page.dart';
+import '../widgets/smooth_task_scroll.dart';
 import '../widgets/tile.dart';
 import 'shell.dart';
 
@@ -22,7 +23,8 @@ class TodayPage extends StatelessWidget {
     final left = [_NextUp(onStart: onStart), const SizedBox(height: 16), _LevelCard(onTab: onTab), if (state.sentenceOfTheDay != null) ...[const SizedBox(height: 16), const _Sentence()]];
     final right = const _PageCard();
     return SizedBox.expand(
-      child: SingleChildScrollView(
+      child: SmoothTaskScroll(builder: (context, controller) => SingleChildScrollView(
+      controller: controller,
       padding: const EdgeInsets.fromLTRB(32, 4, 32, 32),
       child: wide
           ? PixelRow(
@@ -34,7 +36,7 @@ class TodayPage extends StatelessWidget {
               ],
             )
           : PixelColumn(crossAxisAlignment: CrossAxisAlignment.stretch, children: [...left, const SizedBox(height: 16), right]),
-      ),
+      )),
     );
   }
 }

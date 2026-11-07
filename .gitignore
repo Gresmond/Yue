@@ -50,3 +50,6 @@ data_src/
 build/
 .dart_tool/
 *.iml
+
+# Yue's Google client: copy google_client.example.dart to make it.
+/lib/data/google_client.dart

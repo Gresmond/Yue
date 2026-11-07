@@ -5,17 +5,20 @@ import '../state/session.dart';
 import '../theme/app_theme.dart';
 import '../theme/pixels.dart';
 import '../theme/tokens.dart';
+import '../widgets/app_dialog.dart';
 import '../widgets/common.dart';
 import '../widgets/fade_through.dart';
 import '../widgets/glide_pill.dart';
 import '../widgets/hover_fill.dart';
 import '../widgets/rolling_number.dart';
 import '../widgets/smooth_gradient.dart';
+import '../widgets/sync_section.dart';
 import 'path_page.dart';
 import 'progress_page.dart';
 import 'read_page.dart';
 import 'session_screen.dart';
 import 'today_page.dart';
+import 'warm_up.dart';
 import 'words_page.dart';
 
 enum Section { today, path, read, words, progress }
@@ -50,7 +53,10 @@ class _ShellState extends State<Shell> {
     return Scaffold(
       backgroundColor: p.background,
       body: SafeArea(
-        child: FadeThrough(
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: FadeThrough(
           child: session != null
               ? SessionScreen(key: ValueKey('session$_run'), session: session, onClose: _close, onAgain: _start)
               : PixelColumn(
@@ -73,6 +79,10 @@ class _ShellState extends State<Shell> {
                     ),
                   ],
                 ),
+        ),
+            ),
+            if (WarmUp.enabled) const Positioned.fill(child: WarmUp()),
+          ],
         ),
       ),
     );
@@ -178,12 +188,21 @@ class _TabBarState extends State<_TabBar> {
               Hoverable(
                 key: ValueKey(t),
                 onTap: () => widget.onTab(t),
-                builder: (hover) => Container(
+                // The selected background is the bar's gliding pill; a tab only
+                // draws its hover shade, and its text eases as the pill arrives.
+                builder: (hover) => AnimatedContainer(
                   key: _keys[t],
+                  duration: context.themed(Motion.hover),
+                  curve: Motion.hoverCurve,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(30),
+                    color: t != widget.tab && hover ? p.empty : p.empty.withValues(alpha: 0),
+                  ),
                   child: AnimatedDefaultTextStyle(
-                    duration: context.themed(Motion.click),
-                    style: bodyStyle(t == widget.tab ? p.onDone : (hover ? p.ink : p.inkMuted), weight: FontWeight.w600, height: 1.2),
+                    duration: context.themed(Motion.morph),
+                    curve: Motion.morphCurve,
+                    style: bodyStyle(t == widget.tab ? p.onDone : p.ink, weight: FontWeight.w600, height: 1.2),
                     child: Text(widget.names[t]!),
                   ),
                 ),
@@ -213,7 +232,7 @@ class _StreakPill extends StatelessWidget {
         curve: Motion.morphCurve,
         height: 46,
         padding: const EdgeInsets.symmetric(horizontal: 16),
-        decoration: BoxDecoration(color: done ? p.done : p.tile.withValues(alpha: 0.8), borderRadius: BorderRadius.circular(24), border: Border.all(color: done ? Colors.transparent : p.border)),
+        decoration: BoxDecoration(color: done ? p.done : p.tile.withValues(alpha: 0.8), borderRadius: BorderRadius.circular(24), border: Border.all(color: done ? p.border.withValues(alpha: 0) : p.border)),
         child: PixelRow(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -234,9 +253,9 @@ class _ThemeButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     return PixelTooltip(
-      message: 'Appearance',
+      message: 'Appearance and sync',
       child: Hoverable(
-        onTap: () => showDialog(context: context, builder: (_) => const _AppearanceDialog()),
+        onTap: () => showAppDialog(context: context, builder: (_) => const AppearanceDialog()),
         builder: (_) => Container(
           padding: const EdgeInsets.all(4),
           decoration: SmoothGradientDecoration(color: p.tile.withValues(alpha: 0.8), shape: BoxShape.circle, border: Border.all(color: p.border)),
@@ -264,8 +283,8 @@ class _Swatch extends StatelessWidget {
   );
 }
 
-class _AppearanceDialog extends StatelessWidget {
-  const _AppearanceDialog();
+class AppearanceDialog extends StatelessWidget {
+  const AppearanceDialog({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -274,7 +293,7 @@ class _AppearanceDialog extends StatelessWidget {
     return Dialog(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 520),
-        child: Padding(
+        child: SingleChildScrollView(
           padding: dialogPadding,
           child: PixelColumn(
             mainAxisSize: MainAxisSize.min,
@@ -295,7 +314,7 @@ class _AppearanceDialog extends StatelessWidget {
                         onTap: () => state.setTheme(palette.name),
                         builder: (_) => Container(
                           padding: const EdgeInsets.all(2),
-                          decoration: SmoothGradientDecoration(shape: BoxShape.circle, border: Border.all(color: palette.name == state.themeName ? p.accent : Colors.transparent, width: 2)),
+                          decoration: SmoothGradientDecoration(shape: BoxShape.circle, border: Border.all(color: p.accent.withValues(alpha: palette.name == state.themeName ? 1 : 0), width: 2)),
                           child: _Swatch(palette: palette, size: 32),
                         ),
                       ),
@@ -311,10 +330,11 @@ class _AppearanceDialog extends StatelessWidget {
                     Hoverable(
                       onTap: () => state.setChineseFont(font),
                       builder: (hover) => AnimatedContainer(
-                        duration: context.themed(Motion.click),
+                        duration: context.themed(Motion.hover),
+                        curve: Motion.hoverCurve,
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                         decoration: BoxDecoration(
-                          color: Fonts.zh == font ? p.empty : (hover ? p.empty.withValues(alpha: 0.5) : Colors.transparent),
+                          color: Fonts.zh == font ? p.empty : p.empty.withValues(alpha: hover ? 0.5 : 0),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: Fonts.zh == font ? p.accent : p.border),
                         ),
@@ -332,6 +352,12 @@ class _AppearanceDialog extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 20),
+              if (state.sync case final sync?) ...[
+                Text('GOOGLE SYNC', style: capsLabel(p.inkMuted)),
+                const SizedBox(height: 8),
+                SyncSection(sync: sync),
+                const SizedBox(height: 20),
+              ],
               Text('WHERE THE COURSE COMES FROM', style: capsLabel(p.inkMuted)),
               const SizedBox(height: 8),
               Text(

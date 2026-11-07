@@ -8,6 +8,7 @@ import '../theme/pixels.dart';
 import '../theme/tokens.dart';
 import '../widgets/common.dart';
 import '../widgets/hover_fill.dart';
+import '../widgets/smooth_task_scroll.dart';
 
 /// Every word in the course: find one by Chinese, pinyin or English, and see how
 /// well you hold it.
@@ -51,6 +52,7 @@ class _WordsPageState extends State<WordsPage> {
                     isDense: true,
                     filled: true,
                     fillColor: p.tile,
+                    hoverColor: Colors.transparent,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide(color: p.border)),
                     focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide(color: p.accent)),
@@ -68,7 +70,8 @@ class _WordsPageState extends State<WordsPage> {
           Expanded(
             child: words.isEmpty
                 ? Center(child: Text(_filter == 'Weak' ? 'Nothing weak right now.' : 'No words here yet.', style: bodyStyle(p.inkMuted)))
-                : ListView.builder(
+                : SmoothTaskScroll(builder: (context, controller) => ListView.builder(
+      controller: controller,
                     padding: const EdgeInsets.only(bottom: 32),
                     itemCount: words.length,
                     itemBuilder: (context, i) => _WordRow(
@@ -76,7 +79,7 @@ class _WordsPageState extends State<WordsPage> {
                       open: _open == words[i].w,
                       onTap: () => setState(() => _open = _open == words[i].w ? null : words[i].w),
                     ),
-                  ),
+                  )),
           ),
         ],
       ),
@@ -98,11 +101,13 @@ class _WordRow extends StatelessWidget {
     final recall = memory == null ? null : Fsrs.recallAt(memory, state.nowMs);
     return Hoverable(
       onTap: onTap,
+      behavior: HitTestBehavior.opaque,
       builder: (hover) => AnimatedContainer(
         duration: context.themed(Motion.hover),
+        curve: Motion.hoverCurve,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         margin: const EdgeInsets.only(bottom: 4),
-        decoration: BoxDecoration(color: hover || open ? p.tile : Colors.transparent, borderRadius: BorderRadius.circular(12)),
+        decoration: BoxDecoration(color: hover || open ? p.tile : p.tile.withValues(alpha: 0), borderRadius: BorderRadius.circular(12)),
         child: PixelColumn(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,

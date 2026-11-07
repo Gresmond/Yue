@@ -78,6 +78,16 @@ abstract final class Fsrs {
 
   /// [before] (null if new) after a review rated [rating] at [nowMs]. [fuzz], from
   /// 0 to 1, spreads long intervals so a batch doesn't all come due together.
+  /// The same fuzz for the same review on every device, so working a card's
+  /// history out again always reaches the same answer.
+  static double fuzzFor(String id, int atMs) {
+    var hash = 0x811c9dc5;
+    for (final unit in '$id@$atMs'.codeUnits) {
+      hash = ((hash ^ unit) * 0x01000193) & 0xffffffff;
+    }
+    return hash / 0xffffffff;
+  }
+
   static Memory review(Memory? before, Rating rating, int nowMs, {double fuzz = 0.5}) {
     final r = rating.value;
     double s, d;

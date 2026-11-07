@@ -55,7 +55,7 @@ class PillButton extends StatelessWidget {
           decoration: BoxDecoration(
             color: enabled ? (hover ? Color.lerp(fill, primary || tone != null ? p.ink : p.empty, 0.14) : fill) : fill.withValues(alpha: 0.45),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: primary || tone != null ? Colors.transparent : p.border),
+            border: Border.all(color: primary || tone != null ? p.border.withValues(alpha: 0) : p.border),
           ),
           child: PixelRow(
             mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
@@ -169,9 +169,9 @@ class TappableText extends StatelessWidget {
                   duration: context.themed(Motion.hover),
                   curve: Motion.hoverCurve,
                   decoration: BoxDecoration(
-                    color: selected == i ? p.other.withValues(alpha: 0.3) : (hover ? p.empty : Colors.transparent),
+                    color: selected == i ? p.other.withValues(alpha: 0.3) : (hover ? p.empty : p.empty.withValues(alpha: 0)),
                     borderRadius: BorderRadius.circular(4),
-                    border: Border(bottom: BorderSide(color: known ? Colors.transparent : p.accent, width: 2)),
+                    border: Border(bottom: BorderSide(color: p.accent.withValues(alpha: known ? 0 : 1), width: 2)),
                   ),
                   child: Text(t, style: style),
                 );

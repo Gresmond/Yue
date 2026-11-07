@@ -8,6 +8,7 @@ import '../theme/pixels.dart';
 import '../theme/tokens.dart';
 import '../widgets/common.dart';
 import '../widgets/hover_fill.dart';
+import '../widgets/smooth_task_scroll.dart';
 import '../widgets/tile.dart';
 
 /// The whole road: bands, what each lets you do, and every level along the way.
@@ -28,7 +29,8 @@ class PathPage extends StatelessWidget {
       (bands[l.band] ??= []).add(l);
     }
     final reader = _readers.entries.where((e) => state.learned.length < e.key).firstOrNull;
-    return ListView(
+    return SmoothTaskScroll(builder: (context, controller) => ListView(
+      controller: controller,
       padding: const EdgeInsets.fromLTRB(32, 4, 32, 32),
       children: [
         if (reader != null)
@@ -55,7 +57,7 @@ class PathPage extends StatelessWidget {
           const SizedBox(height: 16),
         ],
       ],
-    );
+    ));
   }
 }
 
@@ -151,7 +153,8 @@ class _LessonDot extends StatelessWidget {
       child: Hoverable(
         onTap: onTap,
         builder: (hover) => AnimatedContainer(
-          duration: context.themed(Motion.click),
+          duration: context.themed(Motion.hover),
+          curve: Motion.hoverCurve,
           width: 20,
           height: 20,
           decoration: BoxDecoration(

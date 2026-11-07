@@ -5,12 +5,18 @@ import 'package:flutter/widgets.dart';
 import '../data/curriculum.dart';
 import '../data/fsrs.dart';
 import '../data/store.dart';
+import '../data/sync_service.dart';
 import '../theme/app_theme.dart';
 
 /// Card ids: `wr:` reading a word, `ww:` writing one, `rad:` a radical,
 /// `sr:` reading a sentence, `sb:` building one.
 class AppState extends ChangeNotifier {
-  AppState(this.store, this.course) {
+  AppState(this.store, this.course, {this.sync}) {
+    _load();
+    openDay();
+  }
+
+  void _load() {
     cards = store.cards();
     _lessons = store.lessonsDone();
     _passed = store.levelsPassed();
@@ -21,11 +27,21 @@ class AppState extends ChangeNotifier {
     best = int.tryParse(store.meta('best_streak') ?? '') ?? 0;
     freezes = int.tryParse(store.meta('freezes') ?? '') ?? 0;
     _recount();
+  }
+
+  /// Takes in what came from another device.
+  void reload() {
+    _load();
     openDay();
+    _maybeCompleteDay();
+    notifyListeners();
   }
 
   final Store store;
   final Curriculum course;
+
+  /// Google sync, if it could start: Yue runs on its own without it.
+  final SyncService? sync;
   late Map<String, Memory> cards;
   late Set<String> _lessons, _reads;
   late int _passed;
@@ -35,7 +51,6 @@ class AppState extends ChangeNotifier {
 
   /// What's learned, kept up to date as cards are first reviewed.
   final Set<String> learned = {}, learnedChars = {};
-  final Random2 _random = Random2();
 
   /// Days run from 4am, so a late night still counts as the same day.
   static DateTime dayOf(DateTime t) {
@@ -145,7 +160,8 @@ class AppState extends ChangeNotifier {
   }
 
   void rate(String id, Rating rating, {int takenMs = 0, bool isReview = true}) {
-    final m = Fsrs.review(cards[id], rating, nowMs, fuzz: _random.next());
+    final at = nowMs;
+    final m = Fsrs.review(cards[id], rating, at, fuzz: Fsrs.fuzzFor(id, at));
     cards[id] = m;
     store.saveReview(id, m, rating, takenMs);
     if (id.startsWith('wr:')) {
@@ -289,11 +305,6 @@ class AppState extends ChangeNotifier {
     store.setMeta('zh_font', font);
     notifyListeners();
   }
-}
-
-class Random2 {
-  final _r = math.Random();
-  double next() => _r.nextDouble();
 }
 
 class AppScope extends InheritedNotifier<AppState> {
