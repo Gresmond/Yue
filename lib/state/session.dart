@@ -35,6 +35,12 @@ class MatchPairs extends Step {
   final missed = <Word>{};
 }
 
+/// An AI-written sentence to read: nothing to answer, and it never joins reviews.
+class ReadAlong extends Step {
+  const ReadAlong(this.sentence);
+  final Sentence sentence;
+}
+
 /// A step with a right answer, recorded the first time it's tried.
 sealed class Check extends Step {
   const Check(this.card);
@@ -202,9 +208,9 @@ class Session {
     steps.addAll((words.toList()..shuffle(random)).map((w) => WriteWord(w, writeOptions(course, w, random))));
     final sentences = [for (final id in lesson.sentences) ?course.sentences[id]];
     for (final s in sentences) {
-      steps.add(ReadSentence(s));
+      steps.add(s.ai ? ReadAlong(s) : ReadSentence(s));
     }
-    for (final s in sentences.where(_buildable).take(2)) {
+    for (final s in sentences.where((s) => !s.ai && _buildable(s)).take(2)) {
       steps.add(BuildSentence(s, tilesFor(s, random)));
     }
     return Session._(state, SessionKind.lesson, steps, lesson: lesson, practice: state.lessonDone(lesson));

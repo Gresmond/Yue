@@ -201,6 +201,40 @@ void main() {
     });
   });
 
+  testWidgets('an AI sentence is read and moved on from, with nothing asked', (t) async {
+    t.view.physicalSize = const Size(1240, 860);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    final course = Curriculum(jsonDecode(utf8.decode(gzip.decode(File('assets/curriculum.json.gz').readAsBytesSync()))));
+    final dir = Directory.systemTemp.createTempSync('yue-ui');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final state = AppState(Store.open(dir.path), course);
+    final lesson = course.levels.expand((l) => l.lessons).firstWhere((l) => l.sentences.any((id) => course.sentences[id]!.ai));
+    final s = Session.forLesson(state, lesson);
+    while (s.current is! ReadAlong) {
+      s.next();
+    }
+    final at = s.index;
+    await t.pumpWidget(
+      AppScope(
+        state: state,
+        child: MaterialApp(
+          theme: themeNamed(state.themeName),
+          home: Scaffold(body: SessionScreen(session: s, onClose: () {}, onAgain: (_) {})),
+        ),
+      ),
+    );
+    await t.pumpAndSettle();
+    await t.tap(find.text('Show meaning'));
+    await t.pumpAndSettle();
+    expect(find.textContaining('AI-written'), findsOneWidget);
+    expect(find.text('Understood'), findsNothing);
+    await t.tap(find.text('Continue'));
+    await t.pumpAndSettle();
+    expect(s.index, at + 1);
+    expect(s.answered, 0);
+  });
+
   testWidgets('wrong pinyin gets no second try: the answer shows, and it comes round again', (t) async {
     t.view.physicalSize = const Size(1240, 860);
     t.view.devicePixelRatio = 1;

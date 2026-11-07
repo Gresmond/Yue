@@ -242,6 +242,21 @@ void main() {
       expect(state.dueCount, 0);
     });
 
+    test('AI sentences are only read: never built, scored or scheduled', () {
+      final state = open();
+      final course = state.course;
+      final lesson = course.levels.expand((l) => l.lessons).firstWhere((l) => l.sentences.any((id) => course.sentences[id]!.ai));
+      final s = Session.forLesson(state, lesson);
+      expect(s.steps.whereType<ReadAlong>(), isNotEmpty);
+      expect(s.steps.whereType<ReadSentence>().where((step) => step.sentence.ai), isEmpty);
+      expect(s.steps.whereType<BuildSentence>().where((step) => step.sentence.ai), isEmpty);
+      runAll(s);
+      expect(state.cards.keys.where((id) => id.startsWith('sr:ai') || id.startsWith('sb:ai')), isEmpty);
+      final ai = s.steps.whereType<ReadAlong>().first.sentence;
+      state.store.saveReview('sr:${ai.id}', Fsrs.review(null, Rating.good, 0), Rating.good, 0);
+      expect(open().cards, isNot(contains('sr:${ai.id}')));
+    });
+
     test('no match holds two words with the same meaning, and every word gets one', () {
       final state = open();
       for (final l in state.course.levels) {

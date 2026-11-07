@@ -11,7 +11,8 @@ import '../theme/app_theme.dart';
 /// Card ids: `wr:` reading a word, `ww:` writing one, `sr:` reading a sentence,
 /// `sb:` building one. Older data may hold `rad:` cards for radicals, which are
 /// now explained on word cards and no longer reviewed, and cards for sentences
-/// the course has since dropped. Their history stays, but they never come due.
+/// the course has since dropped, or that AI wrote. Their history stays, but they
+/// never come due.
 class AppState extends ChangeNotifier {
   AppState(this.store, this.course, {this.sync}) {
     store
@@ -24,7 +25,7 @@ class AppState extends ChangeNotifier {
   bool _inCourse(String id) {
     final key = id.substring(id.indexOf(':') + 1);
     if (id.startsWith('wr:') || id.startsWith('ww:')) return course.words.containsKey(key);
-    if (id.startsWith('sr:') || id.startsWith('sb:')) return course.sentences.containsKey(key);
+    if (id.startsWith('sr:') || id.startsWith('sb:')) return course.sentences[key]?.ai == false;
     return false;
   }
 

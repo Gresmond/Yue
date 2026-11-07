@@ -97,6 +97,7 @@ class _SessionScreenState extends State<SessionScreen> {
         onNext: _advance,
       ),
       ReadSentence(:final sentence) => _ReadSentenceView(sentence: sentence, onRated: rate, onNext: _advance),
+      ReadAlong(:final sentence) => _ReadSentenceView(sentence: sentence, onNext: _advance),
       WriteWord(:final word, :final options) => _WriteView(word: word, options: options, quiet: exam, onRated: rate, onNext: _advance),
       BuildSentence(:final sentence, :final tiles) => _BuildView(sentence: sentence, tiles: tiles, quiet: exam, onRated: rate, onNext: _advance),
     };
@@ -857,9 +858,11 @@ class _Reveal extends StatelessWidget {
 }
 
 class _ReadSentenceView extends StatefulWidget {
-  const _ReadSentenceView({required this.sentence, required this.onRated, required this.onNext});
+  const _ReadSentenceView({required this.sentence, this.onRated, required this.onNext});
   final Sentence sentence;
-  final void Function(Rating, int) onRated;
+
+  /// How it went. Null if it's only there to read, so nothing is asked.
+  final void Function(Rating, int)? onRated;
   final VoidCallback onNext;
 
   @override
@@ -871,7 +874,7 @@ class _ReadSentenceViewState extends State<_ReadSentenceView> with _Timed {
   int? _selected;
 
   void _rate(Rating r) {
-    widget.onRated(r, taken);
+    widget.onRated!(r, taken);
     widget.onNext();
   }
 
@@ -879,11 +882,18 @@ class _ReadSentenceViewState extends State<_ReadSentenceView> with _Timed {
   Widget build(BuildContext context) {
     final p = context.palette;
     final s = widget.sentence;
+    final justRead = widget.onRated == null;
     return _StepCard(
+      actionsKey: _shown,
       onKey: (k) {
         if (!_shown) {
           if (!_isGo(k)) return KeyEventResult.ignored;
           setState(() => _shown = true);
+          return KeyEventResult.handled;
+        }
+        if (justRead) {
+          if (!_isGo(k)) return KeyEventResult.ignored;
+          widget.onNext();
           return KeyEventResult.handled;
         }
         final r = switch (_digits.indexOf(k)) { 0 => Rating.again, 1 => Rating.hard, 2 => Rating.good, _ => _isGo(k) ? Rating.good : null };
@@ -891,7 +901,9 @@ class _ReadSentenceViewState extends State<_ReadSentenceView> with _Timed {
         _rate(r);
         return KeyEventResult.handled;
       },
-      actions: _shown
+      actions: _shown && justRead
+          ? [_Continue(onTap: widget.onNext)]
+          : _shown
           ? [
               PillButton(label: 'Didn’t get it', hint: '1', tone: p.missed, onTap: () => _rate(Rating.again)),
               PillButton(label: 'Partly', hint: '2', onTap: () => _rate(Rating.hard)),
