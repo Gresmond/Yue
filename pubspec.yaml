@@ -1,0 +1,72 @@
+name: yue
+description: "Learn to read and write Mandarin."
+publish_to: 'none'
+version: 26.11.1
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  sqlite3: ^3.8.0
+  path_provider: ^2.1.6
+  path: ^1.9.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/curriculum.json.gz
+  fonts:
+    - family: Greed
+      fonts:
+        - asset: assets/fonts/greed/GreedStandard-TRIAL-Light.otf
+          weight: 400
+        - asset: assets/fonts/greed/GreedStandard-TRIAL-Regular.otf
+          weight: 500
+        - asset: assets/fonts/greed/GreedStandard-TRIAL-Medium.otf
+          weight: 600
+        - asset: assets/fonts/greed/GreedStandard-TRIAL-SemiBold.otf
+          weight: 700
+    - family: Matter
+      fonts:
+        - asset: assets/fonts/matter/MatterXH-TRIAL-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/matter/MatterXH-TRIAL-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/matter/MatterXH-TRIAL-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/matter/MatterXH-TRIAL-Bold.ttf
+          weight: 700
+    - family: Matter XH SemiMono
+      fonts:
+        - asset: assets/fonts/matter/MatterXHSemiMono-TRIAL-Regular.ttf
+          weight: 400
+    - family: Haffer SemiMono
+      fonts:
+        - asset: assets/fonts/haffer/HafferSemiMono-TRIAL-Medium.otf
+          weight: 500
+        - asset: assets/fonts/haffer/HafferSemiMono-TRIAL-SemiBold.otf
+          weight: 600
+    - family: Yue Kai
+      fonts:
+        - asset: assets/fonts/chinese/WenKai.ttf
+          weight: 400
+        - asset: assets/fonts/chinese/WenKaiMedium.ttf
+          weight: 600
+    - family: Yue Sans
+      fonts:
+        - asset: assets/fonts/chinese/NotoSansSC.ttf
+
+# Linux builds use the system SQLite package; other platforms keep their native asset.
+hooks:
+  user_defines:
+    sqlite3:
+      source:
+        linux: system
+        default: sqlite3
